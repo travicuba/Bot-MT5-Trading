@@ -1,0 +1,7 @@
+{
+  "last_signal": "BUY",
+  "last_trade_time": "2026-02-01 10:35:00",
+  "consecutive_losses": 1,
+  "cooldown_until": null,
+  "active_setup": "EMA_PULLBACK"
+}

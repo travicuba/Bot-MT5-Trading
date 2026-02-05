@@ -1,0 +1,19 @@
+{
+  "timestamp": "2026-01-29T12:45:00",
+  "symbol": "EURUSD",
+  "timeframe": "M5",
+  "action": "BUY",
+  "confidence": 0.82,
+  "setup": "TrendPullback",
+  "risk": {
+    "sl_pips": 8,
+    "tp_pips": 12,
+    "risk_percent": 0.5
+  },
+  "filters": {
+    "session": "LONDON",
+    "volatility_ok": true,
+    "trend_alignment": true
+  },
+  "status": "VALID"
+}
