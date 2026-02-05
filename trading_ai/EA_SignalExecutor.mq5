@@ -1,5 +1,6 @@
 //+------------------------------------------------------------------+
 //| Signal Executor EA + Trade Feedback + Market Data Writer        |
+//| VERSION CORREGIDA - Sin errores de compilación                  |
 //+------------------------------------------------------------------+
 #property strict
 #property tester_file "signals\\signal.json"
@@ -14,9 +15,9 @@ input string Signal_File   = "signals\\signal.json";
 input string Feedback_File = "trade_feedback.json";
 input double Min_Confidence = 0.70;
 
-// ======== NUEVO: CONFIG PARA MARKET DATA ========//
+// ======== CONFIG PARA MARKET DATA ========//
 input string Market_Data_File = "market_data.json";
-input int    Data_Write_Interval = 10; // segundos entre escrituras
+input int    Data_Write_Interval = 10;
 input int    RSI_Period = 14;
 input int    MACD_Fast = 12;
 input int    MACD_Slow = 26;
@@ -43,10 +44,12 @@ string last_signal_id   = "";
 string active_signal_id = "";
 string active_action    = "";
 
-// ======== NUEVO: VARIABLES PARA MARKET DATA ========//
 datetime last_data_write_time = 0;
 int handle_rsi, handle_macd, handle_ema_fast, handle_ema_slow, handle_ema_long;
 int handle_bb, handle_atr;
+
+double pip_value;
+long stops_level;  // CAMBIADO: de int a long
 
 //================ JSON HELPER =================//
 string GetJSONValue(string json, string key)
@@ -81,7 +84,7 @@ bool ReadSignal(Signal &sig)
    int handle = FileOpen(Signal_File, FILE_READ | FILE_TXT | FILE_ANSI);
    if(handle == INVALID_HANDLE)
    {
-      Print("❌ No se pudo abrir signal.json | Error: ", GetLastError());
+      Print("No se pudo abrir signal.json | Error: ", GetLastError());
       return false;
    }
 
@@ -119,7 +122,7 @@ void WriteTradeFeedback(string result, double pips)
    int handle = FileOpen(Feedback_File, FILE_WRITE | FILE_TXT | FILE_ANSI);
    if(handle == INVALID_HANDLE)
    {
-      Print("❌ No se pudo escribir trade_feedback.json");
+      Print("No se pudo escribir trade_feedback.json");
       return;
    }
 
@@ -134,7 +137,7 @@ void WriteTradeFeedback(string result, double pips)
    FileWriteString(handle, json);
    FileClose(handle);
 
-   Print("🧠 FEEDBACK GUARDADO → ", result, " | Pips: ", pips);
+   Print("FEEDBACK GUARDADO -> ", result, " | Pips: ", pips);
 }
 
 //================ ON TRADE TRANSACTION =================//
@@ -144,16 +147,15 @@ void OnTradeTransaction(
    const MqlTradeResult &result
 )
 {
-   // Solo cuando se agrega un DEAL
    if(trans.type != TRADE_TRANSACTION_DEAL_ADD)
       return;
-   // Obtener info del deal
+      
    ulong deal_ticket = trans.deal;
    if(!HistoryDealSelect(deal_ticket))
       return;
-   // Solo cierres
+      
    if((ENUM_DEAL_ENTRY)HistoryDealGetInteger(deal_ticket, DEAL_ENTRY) != DEAL_ENTRY_OUT)
-   return;
+      return;
       
    double profit = HistoryDealGetDouble(deal_ticket, DEAL_PROFIT);
    double pips = profit / 10.0;
@@ -165,33 +167,24 @@ void OnTradeTransaction(
    active_signal_id = "";
    active_action = "";
    
-   Print("📊 TRADE CERRADO → ", res, " | Pips: ", pips);
+   Print("TRADE CERRADO -> ", res, " | Pips: ", pips);
 }
-
-// ============================================================
-// ======== NUEVO: FUNCIONES PARA MARKET DATA WRITER ========
-// ============================================================
 
 //================ DETECT TREND =================//
 string DetectTrend(double ema_fast, double ema_slow, double ema_long, double current_price)
 {
-   // Tendencia alcista fuerte
    if(ema_fast > ema_slow && ema_slow > ema_long && current_price > ema_fast)
       return "STRONG_UP";
    
-   // Tendencia alcista
    if(ema_fast > ema_slow && current_price > ema_fast)
       return "UP";
    
-   // Tendencia bajista fuerte
    if(ema_fast < ema_slow && ema_slow < ema_long && current_price < ema_fast)
       return "STRONG_DOWN";
    
-   // Tendencia bajista
    if(ema_fast < ema_slow && current_price < ema_fast)
       return "DOWN";
    
-   // Lateral
    return "SIDEWAYS";
 }
 
@@ -242,12 +235,10 @@ string GetCandlesJSON(int count)
 //================ WRITE MARKET DATA =================//
 void WriteMarketData()
 {
-   // Obtener precios actuales
    double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
    double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
    double spread = (ask - bid) / _Point;
    
-   // Obtener datos de indicadores
    double rsi_buffer[], macd_main[], macd_signal[], ema_fast_buffer[], ema_slow_buffer[], ema_long_buffer[];
    double bb_upper[], bb_middle[], bb_lower[], atr_buffer[];
    
@@ -262,7 +253,6 @@ void WriteMarketData()
    ArraySetAsSeries(bb_lower, true);
    ArraySetAsSeries(atr_buffer, true);
    
-   // Copiar valores de indicadores
    if(CopyBuffer(handle_rsi, 0, 0, 1, rsi_buffer) <= 0) return;
    if(CopyBuffer(handle_macd, 0, 0, 1, macd_main) <= 0) return;
    if(CopyBuffer(handle_macd, 1, 0, 1, macd_signal) <= 0) return;
@@ -274,7 +264,6 @@ void WriteMarketData()
    if(CopyBuffer(handle_bb, 2, 0, 1, bb_lower) <= 0) return;
    if(CopyBuffer(handle_atr, 0, 0, 1, atr_buffer) <= 0) return;
    
-   // Calcular ATR promedio para detectar volatilidad
    double atr_array[20];
    ArraySetAsSeries(atr_array, true);
    CopyBuffer(handle_atr, 0, 0, 20, atr_array);
@@ -283,16 +272,10 @@ void WriteMarketData()
       atr_avg += atr_array[i];
    atr_avg /= 20;
    
-   // Detectar tendencia
    string trend = DetectTrend(ema_fast_buffer[0], ema_slow_buffer[0], ema_long_buffer[0], bid);
-   
-   // Detectar volatilidad
    string volatility = DetectVolatility(atr_buffer[0], atr_avg);
-   
-   // Obtener últimas velas
    string candles = GetCandlesJSON(20);
    
-   // Construir JSON
    string json = "{\n";
    json += "  \"symbol\": \"" + _Symbol + "\",\n";
    json += "  \"timeframe\": \"" + EnumToString(PERIOD_CURRENT) + "\",\n";
@@ -328,24 +311,22 @@ void WriteMarketData()
    json += "  \"candles\": " + candles + "\n";
    json += "}\n";
    
-   // Escribir archivo
    int handle = FileOpen(Market_Data_File, FILE_WRITE | FILE_TXT | FILE_ANSI);
    if(handle == INVALID_HANDLE)
    {
-      Print("❌ No se pudo escribir market_data.json | Error: ", GetLastError());
+      Print("No se pudo escribir market_data.json | Error: ", GetLastError());
       return;
    }
    
    FileWriteString(handle, json);
    FileClose(handle);
    
-   Print("📊 MARKET DATA actualizado → Trend: ", trend, " | RSI: ", DoubleToString(rsi_buffer[0], 2));
+   Print("MARKET DATA actualizado -> Trend: ", trend, " | RSI: ", DoubleToString(rsi_buffer[0], 2));
 }
 
 //================ INIT INDICATORS =================//
 bool InitIndicators()
 {
-   // Crear handles de indicadores
    handle_rsi = iRSI(_Symbol, PERIOD_CURRENT, RSI_Period, PRICE_CLOSE);
    handle_macd = iMACD(_Symbol, PERIOD_CURRENT, MACD_Fast, MACD_Slow, MACD_Signal, PRICE_CLOSE);
    handle_ema_fast = iMA(_Symbol, PERIOD_CURRENT, EMA_Fast, 0, MODE_EMA, PRICE_CLOSE);
@@ -354,28 +335,83 @@ bool InitIndicators()
    handle_bb = iBands(_Symbol, PERIOD_CURRENT, BB_Period, 0, BB_Deviation, PRICE_CLOSE);
    handle_atr = iATR(_Symbol, PERIOD_CURRENT, ATR_Period);
    
-   // Verificar que todos se crearon correctamente
    if(handle_rsi == INVALID_HANDLE || handle_macd == INVALID_HANDLE || 
       handle_ema_fast == INVALID_HANDLE || handle_ema_slow == INVALID_HANDLE ||
       handle_ema_long == INVALID_HANDLE || handle_bb == INVALID_HANDLE ||
       handle_atr == INVALID_HANDLE)
    {
-      Print("❌ Error inicializando indicadores");
+      Print("Error inicializando indicadores");
       return false;
    }
    
-   Print("✅ Indicadores inicializados correctamente");
+   Print("Indicadores inicializados correctamente");
    return true;
 }
 
-// ============================================================
-// ======== FIN DE NUEVAS FUNCIONES ========
-// ============================================================
+//================ CALCULATE PIP VALUE =================//
+void CalculatePipValue()
+{
+   int digits = (int)SymbolInfoInteger(_Symbol, SYMBOL_DIGITS);
+   
+   if(digits == 5 || digits == 3)
+      pip_value = 10 * _Point;
+   else
+      pip_value = _Point;
+   
+   stops_level = SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL);
+   
+   Print("Pip Value: ", pip_value);
+   Print("Stops Level: ", stops_level, " points");
+   Print("Digits: ", digits);
+}
+
+//================ ADJUST STOPS =================//
+void AdjustStops(double &sl, double &tp, string action, double entry_price)
+{
+   double min_distance = stops_level * _Point;
+   
+   if(stops_level > 0)
+   {
+      if(action == "BUY")
+      {
+         double sl_distance = entry_price - sl;
+         double tp_distance = tp - entry_price;
+         
+         if(sl_distance < min_distance)
+         {
+            sl = entry_price - min_distance;
+            Print("SL ajustado por stops level: ", DoubleToString(sl, _Digits));
+         }
+         
+         if(tp_distance < min_distance)
+         {
+            tp = entry_price + min_distance;
+            Print("TP ajustado por stops level: ", DoubleToString(tp, _Digits));
+         }
+      }
+      else if(action == "SELL")
+      {
+         double sl_distance = sl - entry_price;
+         double tp_distance = entry_price - tp;
+         
+         if(sl_distance < min_distance)
+         {
+            sl = entry_price + min_distance;
+            Print("SL ajustado por stops level: ", DoubleToString(sl, _Digits));
+         }
+         
+         if(tp_distance < min_distance)
+         {
+            tp = entry_price - min_distance;
+            Print("TP ajustado por stops level: ", DoubleToString(tp, _Digits));
+         }
+      }
+   }
+}
 
 //================ ON TICK =================//
 void OnTick()
 {
-   // ======== NUEVO: ESCRIBIR MARKET DATA PERIÓDICAMENTE ========//
    datetime current_time = TimeCurrent();
    if(current_time - last_data_write_time >= Data_Write_Interval)
    {
@@ -383,7 +419,6 @@ void OnTick()
       last_data_write_time = current_time;
    }
    
-   // ======== CÓDIGO ORIGINAL: EJECUCIÓN DE SEÑALES ========//
    if(PositionsTotal() > 0)
       return;
 
@@ -392,26 +427,59 @@ void OnTick()
       return;
 
    double lot = 0.01;
-
-   bool ok = false;
-
+   double entry_price, sl_price, tp_price;
+   
    if(sig.action == "BUY")
-      ok = trade.Buy(lot, _Symbol,
-	  SymbolInfoDouble(_Symbol, SYMBOL_ASK),
-         SymbolInfoDouble(_Symbol, SYMBOL_ASK) - sig.sl_pips * _Point,
-         SymbolInfoDouble(_Symbol, SYMBOL_ASK) + sig.tp_pips * _Point);
-
-   if(sig.action == "SELL")
-      ok = trade.Sell(lot, _Symbol,
-         SymbolInfoDouble(_Symbol, SYMBOL_BID),
-         SymbolInfoDouble(_Symbol, SYMBOL_BID) + sig.sl_pips * _Point,
-         SymbolInfoDouble(_Symbol, SYMBOL_BID) - sig.tp_pips * _Point);
-
-   if(ok)
    {
-      active_signal_id = sig.signal_id;
-      active_action    = sig.action;
-      Print("🚀 ORDEN ABIERTA | Signal ID: ", sig.signal_id);
+      entry_price = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+      sl_price = entry_price - (sig.sl_pips * pip_value);
+      tp_price = entry_price + (sig.tp_pips * pip_value);
+      
+      AdjustStops(sl_price, tp_price, "BUY", entry_price);
+      
+      Print("BUY calculado:");
+      Print("   Entry: ", DoubleToString(entry_price, _Digits));
+      Print("   SL: ", DoubleToString(sl_price, _Digits), " (", sig.sl_pips, " pips)");
+      Print("   TP: ", DoubleToString(tp_price, _Digits), " (", sig.tp_pips, " pips)");
+      
+      bool ok = trade.Buy(lot, _Symbol, entry_price, sl_price, tp_price);
+      
+      if(ok)
+      {
+         active_signal_id = sig.signal_id;
+         active_action = sig.action;
+         Print("ORDEN BUY ABIERTA | Signal ID: ", sig.signal_id);
+      }
+      else
+      {
+         Print("ERROR abriendo BUY: ", trade.ResultRetcodeDescription());
+      }
+   }
+   else if(sig.action == "SELL")
+   {
+      entry_price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+      sl_price = entry_price + (sig.sl_pips * pip_value);
+      tp_price = entry_price - (sig.tp_pips * pip_value);
+      
+      AdjustStops(sl_price, tp_price, "SELL", entry_price);
+      
+      Print("SELL calculado:");
+      Print("   Entry: ", DoubleToString(entry_price, _Digits));
+      Print("   SL: ", DoubleToString(sl_price, _Digits), " (", sig.sl_pips, " pips)");
+      Print("   TP: ", DoubleToString(tp_price, _Digits), " (", sig.tp_pips, " pips)");
+      
+      bool ok = trade.Sell(lot, _Symbol, entry_price, sl_price, tp_price);
+      
+      if(ok)
+      {
+         active_signal_id = sig.signal_id;
+         active_action = sig.action;
+         Print("ORDEN SELL ABIERTA | Signal ID: ", sig.signal_id);
+      }
+      else
+      {
+         Print("ERROR abriendo SELL: ", trade.ResultRetcodeDescription());
+      }
    }
 }
 
@@ -420,14 +488,14 @@ int OnInit()
 {
    Print("EA SignalExecutor + Feedback + Market Data Writer INICIADO");
    
-   // ======== NUEVO: INICIALIZAR INDICADORES ========//
+   CalculatePipValue();
+   
    if(!InitIndicators())
    {
-      Print("❌ Fallo al inicializar indicadores. EA detenido.");
+      Print("Fallo al inicializar indicadores. EA detenido.");
       return INIT_FAILED;
    }
    
-   // Escribir market data inicial
    WriteMarketData();
    last_data_write_time = TimeCurrent();
    
@@ -437,7 +505,6 @@ int OnInit()
 //================ DEINIT =================//
 void OnDeinit(const int reason)
 {
-   // ======== NUEVO: LIBERAR HANDLES DE INDICADORES ========//
    if(handle_rsi != INVALID_HANDLE) IndicatorRelease(handle_rsi);
    if(handle_macd != INVALID_HANDLE) IndicatorRelease(handle_macd);
    if(handle_ema_fast != INVALID_HANDLE) IndicatorRelease(handle_ema_fast);
