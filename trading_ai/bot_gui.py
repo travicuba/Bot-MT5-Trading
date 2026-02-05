@@ -1,5 +1,6 @@
 """
 bot_gui.py - Interfaz gráfica mejorada para Trading AI Bot
+VERSION LINUX - Sin emojis, con símbolos Unicode compatibles
 
 Características:
 - Panel de estado visual (Running/Stopped/Error)
@@ -7,7 +8,7 @@ Características:
 - Logs con colores y timestamps
 - Panel de información del mercado actual
 - Panel de última señal generada
-- Historial de trades
+- Compatible con sistemas Linux
 """
 
 import threading
@@ -24,7 +25,7 @@ import main
 class TradingBotGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("🤖 Trading AI - Professional Controller")
+        self.root.title("TRADING AI - Professional Controller")
         self.root.geometry("1400x900")
         self.root.configure(bg="#1e1e1e")
         
@@ -102,17 +103,17 @@ class TradingBotGUI:
         style.configure("Title.TLabel", 
                        background=bg_panel, 
                        foreground=fg_text, 
-                       font=("Arial", 12, "bold"))
+                       font=("DejaVu Sans", 12, "bold"))
         
         style.configure("Stat.TLabel",
                        background=bg_panel,
                        foreground=fg_text,
-                       font=("Arial", 10))
+                       font=("DejaVu Sans", 10))
         
         style.configure("Value.TLabel",
                        background=bg_panel,
                        foreground=accent_blue,
-                       font=("Arial", 14, "bold"))
+                       font=("DejaVu Sans", 14, "bold"))
     
     def create_header(self):
         """Panel superior con estado y controles"""
@@ -124,7 +125,7 @@ class TradingBotGUI:
         status_frame.pack(side=tk.LEFT, padx=20, pady=10)
         
         tk.Label(status_frame, text="Estado:", bg="#2d2d2d", fg="white", 
-                font=("Arial", 10)).pack()
+                font=("DejaVu Sans", 10)).pack()
         
         self.status_indicator = tk.Canvas(status_frame, width=60, height=60, 
                                          bg="#2d2d2d", highlightthickness=0)
@@ -135,7 +136,7 @@ class TradingBotGUI:
         
         self.status_label = tk.Label(status_frame, text="DETENIDO", 
                                      bg="#2d2d2d", fg="white", 
-                                     font=("Arial", 10, "bold"))
+                                     font=("DejaVu Sans", 10, "bold"))
         self.status_label.pack()
         
         # Botones de control
@@ -144,11 +145,11 @@ class TradingBotGUI:
         
         self.start_btn = tk.Button(
             btn_frame,
-            text="▶️ INICIAR BOT",
+            text="► INICIAR BOT",
             command=self.start_bot,
             bg="#4CAF50",
             fg="white",
-            font=("Arial", 12, "bold"),
+            font=("DejaVu Sans", 12, "bold"),
             width=15,
             height=2,
             relief=tk.FLAT,
@@ -158,11 +159,11 @@ class TradingBotGUI:
         
         self.stop_btn = tk.Button(
             btn_frame,
-            text="⏹️ DETENER BOT",
+            text="■ DETENER BOT",
             command=self.stop_bot,
             bg="#f44336",
             fg="white",
-            font=("Arial", 12, "bold"),
+            font=("DejaVu Sans", 12, "bold"),
             width=15,
             height=2,
             relief=tk.FLAT,
@@ -173,11 +174,11 @@ class TradingBotGUI:
         
         self.restart_btn = tk.Button(
             btn_frame,
-            text="🔄 REINICIAR",
+            text="↻ REINICIAR",
             command=self.restart_bot,
             bg="#FF9800",
             fg="white",
-            font=("Arial", 12, "bold"),
+            font=("DejaVu Sans", 12, "bold"),
             width=15,
             height=2,
             relief=tk.FLAT,
@@ -189,15 +190,15 @@ class TradingBotGUI:
         title_frame = tk.Frame(header, bg="#2d2d2d")
         title_frame.pack(side=tk.RIGHT, padx=20)
         
-        tk.Label(title_frame, text="🤖 TRADING AI", bg="#2d2d2d", 
-                fg="#2196F3", font=("Arial", 20, "bold")).pack()
+        tk.Label(title_frame, text="⚡ TRADING AI", bg="#2d2d2d", 
+                fg="#2196F3", font=("DejaVu Sans", 20, "bold")).pack()
         tk.Label(title_frame, text="Advanced Market Intelligence System", 
-                bg="#2d2d2d", fg="#888", font=("Arial", 10)).pack()
+                bg="#2d2d2d", fg="#888", font=("DejaVu Sans", 10)).pack()
     
     def create_stats_panel(self, parent):
         """Panel de estadísticas"""
-        frame = tk.LabelFrame(parent, text="📊 ESTADÍSTICAS", bg="#2d2d2d", 
-                             fg="white", font=("Arial", 11, "bold"),
+        frame = tk.LabelFrame(parent, text="  ESTADISTICAS  ", bg="#2d2d2d", 
+                             fg="white", font=("DejaVu Sans", 11, "bold"),
                              relief=tk.RAISED, borderwidth=2)
         frame.pack(fill=tk.X, pady=5)
         
@@ -223,11 +224,11 @@ class TradingBotGUI:
     def create_stat_row(self, parent, row, label_text, var_name, color="#2196F3"):
         """Crear fila de estadística"""
         tk.Label(parent, text=label_text, bg="#2d2d2d", fg="#aaa", 
-                font=("Arial", 10), anchor="w").grid(row=row, column=0, 
+                font=("DejaVu Sans", 10), anchor="w").grid(row=row, column=0, 
                                                       sticky="w", pady=5, padx=5)
         
         label = tk.Label(parent, text="0", bg="#2d2d2d", fg=color, 
-                        font=("Arial", 14, "bold"), anchor="e")
+                        font=("DejaVu Sans", 14, "bold"), anchor="e")
         label.grid(row=row, column=1, sticky="e", pady=5, padx=5)
         
         setattr(self, var_name, label)
@@ -238,8 +239,8 @@ class TradingBotGUI:
     
     def create_market_info_panel(self, parent):
         """Panel de información del mercado"""
-        frame = tk.LabelFrame(parent, text="📈 MERCADO ACTUAL", bg="#2d2d2d",
-                             fg="white", font=("Arial", 11, "bold"),
+        frame = tk.LabelFrame(parent, text="  MERCADO ACTUAL  ", bg="#2d2d2d",
+                             fg="white", font=("DejaVu Sans", 11, "bold"),
                              relief=tk.RAISED, borderwidth=2)
         frame.pack(fill=tk.X, pady=5)
         
@@ -247,7 +248,7 @@ class TradingBotGUI:
         info_frame.pack(fill=tk.X, padx=10, pady=10)
         
         # Símbolo
-        self.create_info_row(info_frame, 0, "Símbolo:", "symbol_label")
+        self.create_info_row(info_frame, 0, "Simbolo:", "symbol_label")
         
         # Tendencia
         self.create_info_row(info_frame, 1, "Tendencia:", "trend_label")
@@ -259,16 +260,16 @@ class TradingBotGUI:
         self.create_info_row(info_frame, 3, "RSI:", "rsi_label")
         
         # Régimen
-        self.create_info_row(info_frame, 4, "Régimen:", "regime_label")
+        self.create_info_row(info_frame, 4, "Regimen:", "regime_label")
     
     def create_info_row(self, parent, row, label_text, var_name):
         """Crear fila de información"""
         tk.Label(parent, text=label_text, bg="#2d2d2d", fg="#aaa",
-                font=("Arial", 9), anchor="w").grid(row=row, column=0,
+                font=("DejaVu Sans", 9), anchor="w").grid(row=row, column=0,
                                                      sticky="w", pady=3, padx=5)
         
         label = tk.Label(parent, text="--", bg="#2d2d2d", fg="white",
-                        font=("Arial", 10), anchor="e")
+                        font=("DejaVu Sans", 10), anchor="e")
         label.grid(row=row, column=1, sticky="e", pady=3, padx=5)
         
         setattr(self, var_name, label)
@@ -278,22 +279,22 @@ class TradingBotGUI:
     
     def create_last_signal_panel(self, parent):
         """Panel de última señal"""
-        frame = tk.LabelFrame(parent, text="🎯 ÚLTIMA SEÑAL", bg="#2d2d2d",
-                             fg="white", font=("Arial", 11, "bold"),
+        frame = tk.LabelFrame(parent, text="  ULTIMA SENAL  ", bg="#2d2d2d",
+                             fg="white", font=("DejaVu Sans", 11, "bold"),
                              relief=tk.RAISED, borderwidth=2)
         frame.pack(fill=tk.BOTH, expand=True, pady=5)
         
         self.signal_text = scrolledtext.ScrolledText(
             frame, height=10, bg="#1e1e1e", fg="white",
-            font=("Consolas", 9), relief=tk.FLAT,
+            font=("DejaVu Sans Mono", 9), relief=tk.FLAT,
             wrap=tk.WORD
         )
         self.signal_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
     
     def create_logs_panel(self, parent):
         """Panel de logs mejorado"""
-        frame = tk.LabelFrame(parent, text="📋 LOGS DEL SISTEMA", bg="#2d2d2d",
-                             fg="white", font=("Arial", 11, "bold"),
+        frame = tk.LabelFrame(parent, text="  LOGS DEL SISTEMA  ", bg="#2d2d2d",
+                             fg="white", font=("DejaVu Sans", 11, "bold"),
                              relief=tk.RAISED, borderwidth=2)
         frame.pack(fill=tk.BOTH, expand=True)
         
@@ -301,13 +302,14 @@ class TradingBotGUI:
         btn_frame = tk.Frame(frame, bg="#2d2d2d")
         btn_frame.pack(fill=tk.X, padx=5, pady=5)
         
-        tk.Button(btn_frame, text="🗑️ Limpiar Logs", command=self.clear_logs,
-                 bg="#555", fg="white", relief=tk.FLAT, cursor="hand2").pack(side=tk.RIGHT)
+        tk.Button(btn_frame, text="✗ Limpiar Logs", command=self.clear_logs,
+                 bg="#555", fg="white", relief=tk.FLAT, cursor="hand2",
+                 font=("DejaVu Sans", 9)).pack(side=tk.RIGHT)
         
         # Área de logs con colores
         self.log_box = scrolledtext.ScrolledText(
             frame, height=30, bg="#1e1e1e", fg="#00ff00",
-            font=("Consolas", 9), relief=tk.FLAT,
+            font=("DejaVu Sans Mono", 9), relief=tk.FLAT,
             wrap=tk.WORD
         )
         self.log_box.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
@@ -326,13 +328,13 @@ class TradingBotGUI:
         
         self.footer_label = tk.Label(
             footer, text="Sistema listo | Esperando inicio...",
-            bg="#2d2d2d", fg="#888", font=("Arial", 9)
+            bg="#2d2d2d", fg="#888", font=("DejaVu Sans", 9)
         )
         self.footer_label.pack(side=tk.LEFT, padx=10)
         
         self.time_label = tk.Label(
             footer, text="",
-            bg="#2d2d2d", fg="#888", font=("Arial", 9)
+            bg="#2d2d2d", fg="#888", font=("DejaVu Sans", 9)
         )
         self.time_label.pack(side=tk.RIGHT, padx=10)
     
@@ -341,12 +343,12 @@ class TradingBotGUI:
     def start_bot(self):
         """Iniciar el bot"""
         if self.running_thread and self.running_thread.is_alive():
-            self.write("⚠️ El bot ya está en ejecución\n", "WARNING")
+            self.write("⚠ El bot ya esta en ejecucion\n", "WARNING")
             return
         
         self.bot_state = "RUNNING"
         self.update_status_indicator()
-        self.write("🚀 Iniciando bot...\n", "SUCCESS")
+        self.write("► Iniciando bot...\n", "SUCCESS")
         
         self.start_btn.config(state=tk.DISABLED)
         self.stop_btn.config(state=tk.NORMAL)
@@ -359,7 +361,7 @@ class TradingBotGUI:
     
     def stop_bot(self):
         """Detener el bot"""
-        self.write("🛑 Deteniendo bot...\n", "WARNING")
+        self.write("■ Deteniendo bot...\n", "WARNING")
         main.stop_bot()
         
         self.bot_state = "STOPPED"
@@ -379,7 +381,7 @@ class TradingBotGUI:
     def clear_logs(self):
         """Limpiar logs"""
         self.log_box.delete(1.0, tk.END)
-        self.write("📋 Logs limpiados\n", "INFO")
+        self.write("✓ Logs limpiados\n", "INFO")
     
     # ========== MÉTODOS DE ACTUALIZACIÓN ==========
     
@@ -448,7 +450,7 @@ class TradingBotGUI:
                     self.stats["win_rate"] = (total_wins / self.stats["total_trades"]) * 100
                 
             except Exception as e:
-                print(f"⚠️ Error cargando stats: {e}")
+                print(f"⚠ Error cargando stats: {e}")
     
     def update_display(self):
         """Actualizar todos los displays"""
@@ -524,11 +526,11 @@ Reason: {signal.get('reason', 'N/A')}
         
         # Estado del footer
         if self.bot_state == "RUNNING":
-            self.footer_label.config(text="✅ Bot operando | Monitoreando mercado...")
+            self.footer_label.config(text="✓ Bot operando | Monitoreando mercado...")
         elif self.bot_state == "ERROR":
-            self.footer_label.config(text="❌ Error detectado | Revisar logs")
+            self.footer_label.config(text="✗ Error detectado | Revisar logs")
         else:
-            self.footer_label.config(text="⏸️ Bot detenido | Esperando inicio...")
+            self.footer_label.config(text="◼ Bot detenido | Esperando inicio...")
         
         # Repetir cada 1000ms
         self.root.after(1000, self.auto_update)
