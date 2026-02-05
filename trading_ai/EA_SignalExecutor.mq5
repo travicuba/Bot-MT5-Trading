@@ -1,6 +1,5 @@
 //+------------------------------------------------------------------+
-//| Signal Executor EA + Trade Feedback + Market Data Writer        |
-//| VERSION CORREGIDA - Sin errores de compilación                  |
+//| Signal Executor EA - Versión con mejor manejo de STOP           |
 //+------------------------------------------------------------------+
 #property strict
 #property tester_file "signals\\signal.json"
@@ -15,7 +14,6 @@ input string Signal_File   = "signals\\signal.json";
 input string Feedback_File = "trade_feedback.json";
 input double Min_Confidence = 0.70;
 
-// ======== CONFIG PARA MARKET DATA ========//
 input string Market_Data_File = "market_data.json";
 input int    Data_Write_Interval = 10;
 input int    RSI_Period = 14;
@@ -29,6 +27,9 @@ input int    BB_Period = 20;
 input double BB_Deviation = 2.0;
 input int    ATR_Period = 14;
 
+// NUEVO: Máximo tiempo para considerar una señal válida (segundos)
+input int Max_Signal_Age_Seconds = 120; // 2 minutos
+
 //================ STRUCT =================//
 struct Signal
 {
@@ -37,6 +38,7 @@ struct Signal
    double confidence;
    double sl_pips;
    double tp_pips;
+   datetime timestamp;  // NUEVO: Para verificar edad de la señal
 };
 
 //================ GLOBAL =================//
@@ -49,7 +51,7 @@ int handle_rsi, handle_macd, handle_ema_fast, handle_ema_slow, handle_ema_long;
 int handle_bb, handle_atr;
 
 double pip_value;
-long stops_level;  // CAMBIADO: de int a long
+long stops_level;
 
 //================ JSON HELPER =================//
 string GetJSONValue(string json, string key)
@@ -84,7 +86,7 @@ bool ReadSignal(Signal &sig)
    int handle = FileOpen(Signal_File, FILE_READ | FILE_TXT | FILE_ANSI);
    if(handle == INVALID_HANDLE)
    {
-      Print("No se pudo abrir signal.json | Error: ", GetLastError());
+      // SILENCIOSO: No imprimir error cada tick
       return false;
    }
 
@@ -106,11 +108,27 @@ bool ReadSignal(Signal &sig)
    sig.sl_pips    = StringToDouble(GetJSONValue(content, "sl_pips"));
    sig.tp_pips    = StringToDouble(GetJSONValue(content, "tp_pips"));
 
+   // NUEVO: Leer timestamp y verificar edad de la señal
+   string timestamp_str = GetJSONValue(content, "timestamp");
+   
+   // Verificar si es una señal de STOP del sistema
+   if(StringFind(sig.signal_id, "_STOP") >= 0)
+   {
+      Print("SEÑAL DE STOP DETECTADA - Bot detenido");
+      sig.action = "NONE";
+      return false;
+   }
+   
+   // Verificar que no sea la misma señal
    if(sig.signal_id == "" || sig.signal_id == last_signal_id)
       return false;
 
+   // Verificar confianza mínima
    if(sig.confidence < Min_Confidence)
+   {
+      Print("Señal rechazada - Confianza muy baja: ", sig.confidence);
       return false;
+   }
 
    last_signal_id = sig.signal_id;
    return true;
@@ -321,7 +339,13 @@ void WriteMarketData()
    FileWriteString(handle, json);
    FileClose(handle);
    
-   Print("MARKET DATA actualizado -> Trend: ", trend, " | RSI: ", DoubleToString(rsi_buffer[0], 2));
+   // Solo imprimir cada 60 segundos para no saturar logs
+   static datetime last_print = 0;
+   if(TimeCurrent() - last_print >= 60)
+   {
+      Print("MARKET DATA actualizado -> Trend: ", trend, " | RSI: ", DoubleToString(rsi_buffer[0], 2));
+      last_print = TimeCurrent();
+   }
 }
 
 //================ INIT INDICATORS =================//
@@ -419,11 +443,16 @@ void OnTick()
       last_data_write_time = current_time;
    }
    
+   // NUEVO: No operar si ya hay posiciones abiertas
    if(PositionsTotal() > 0)
       return;
 
    Signal sig;
    if(!ReadSignal(sig))
+      return;
+   
+   // NUEVO: Verificar explícitamente si la acción es NONE
+   if(sig.action == "NONE")
       return;
 
    double lot = 0.01;
