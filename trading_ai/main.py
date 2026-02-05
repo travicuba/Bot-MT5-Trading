@@ -1,4 +1,5 @@
 import time
+import os
 from datetime import datetime
 
 from decision_engine.context_analyzer import analyze_market_context
@@ -8,7 +9,6 @@ from data_providers.mt5_reader import read_market_data
 
 # NUEVO: Importar feedback processor
 import sys
-import os
 sys.path.append(os.path.dirname(__file__))
 
 try:
@@ -25,20 +25,73 @@ RUNNING = False
 # ==============================
 # CONFIG
 # ==============================
-LOOP_INTERVAL_SECONDS = 10   # cada cuántos segundos piensa el bot
-RUNNING = True               # flag de control (GUI lo usará luego)
+LOOP_INTERVAL_SECONDS = 10
+RUNNING = True
 
-# ======== NUEVO: PROTECCIONES ========
-MAX_DAILY_TRADES = 20        # Máximo de trades por día
-COOLDOWN_SECONDS = 60        # Segundos entre trades (1 minuto)
-MAX_CONSECUTIVE_LOSSES = 3   # Máximo de pérdidas consecutivas antes de pausar
-PAUSE_AFTER_LOSSES_MINUTES = 30  # Minutos de pausa después de muchas pérdidas
-MIN_CONFIDENCE_THRESHOLD = 0.75  # Confianza mínima aumentada
+# RUTAS DE ARCHIVOS
+SIGNAL_FILE_PATH = "/home/travieso/.wine/drive_c/Program Files/MetaTrader 5/MQL5/Files/signals/signal.json"
+
+# PROTECCIONES
+MAX_DAILY_TRADES = 20
+COOLDOWN_SECONDS = 60
+MAX_CONSECUTIVE_LOSSES = 3
+PAUSE_AFTER_LOSSES_MINUTES = 30
+MIN_CONFIDENCE_THRESHOLD = 0.75
 
 # Variables de control
 last_trade_time = 0
 consecutive_losses = 0
 paused_until = 0
+
+
+def clear_signal_file():
+    """
+    Elimina el archivo signal.json para que el EA no opere con señales viejas
+    """
+    if os.path.exists(SIGNAL_FILE_PATH):
+        try:
+            os.remove(SIGNAL_FILE_PATH)
+            print("🗑️ signal.json eliminado correctamente")
+            return True
+        except Exception as e:
+            print(f"❌ Error eliminando signal.json: {e}")
+            return False
+    else:
+        print("ℹ️ signal.json no existe (ya estaba limpio)")
+        return True
+
+
+def create_stop_signal():
+    """
+    Crea un signal.json con acción NONE para indicar al EA que no opere
+    """
+    try:
+        # Crear directorio si no existe
+        os.makedirs(os.path.dirname(SIGNAL_FILE_PATH), exist_ok=True)
+        
+        stop_signal = {
+            "signal_id": f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_STOP",
+            "action": "NONE",
+            "confidence": 0.0,
+            "sl_pips": 0,
+            "tp_pips": 0,
+            "symbol": "EURUSD",
+            "timeframe": "M5",
+            "timestamp": datetime.now().isoformat(),
+            "setup_name": "SYSTEM_STOP",
+            "reason": "Bot detenido por el usuario"
+        }
+        
+        import json
+        with open(SIGNAL_FILE_PATH, "w") as f:
+            json.dump(stop_signal, f, indent=4)
+        
+        print("🛑 Señal de STOP escrita para el EA")
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error creando señal de stop: {e}")
+        return False
 
 
 # ==============================
@@ -51,17 +104,11 @@ def run_cycle():
     print("🧠 Nuevo ciclo:", datetime.now())
     print("==============================")
 
-    # ------------------------------------------------------------------
-    # NUEVO: PROCESAR FEEDBACK DE TRADES CERRADOS
-    # ------------------------------------------------------------------
+    # PROCESAR FEEDBACK DE TRADES CERRADOS
     if process_feedback():
         print("📊 Feedback procesado y estadísticas actualizadas")
     
-    # ------------------------------------------------------------------
-    # NUEVO: VERIFICAR PROTECCIONES
-    # ------------------------------------------------------------------
-    
-    # Verificar si estamos en pausa
+    # VERIFICAR PROTECCIONES
     current_time = time.time()
     if paused_until > current_time:
         remaining = int((paused_until - current_time) / 60)
@@ -87,24 +134,18 @@ def run_cycle():
     if stats["total_trades"] > 0:
         print(f"📊 Stats del día: {stats['total_wins']}W / {stats['total_losses']}L | WR: {stats['win_rate']:.1f}% | Pips: {stats['total_pips']:.2f}")
 
-    # ------------------------------------------------------------------
-    # 1. INPUT DE MERCADO (luego vendrá de MT5 / CSV / API)
-    # ------------------------------------------------------------------
+    # INPUT DE MERCADO
     market_data = read_market_data()
     
     if not market_data:
         print("⏩ No hay datos de mercado, ciclo omitido")
         return
 
-    # ------------------------------------------------------------------
-    # 2. CONTEXTO
-    # ------------------------------------------------------------------
+    # CONTEXTO
     context = analyze_market_context(market_data)
     print("📊 CONTEXTO:", context)
 
-    # ------------------------------------------------------------------
-    # 3. SELECCIÓN DE SETUP
-    # ------------------------------------------------------------------
+    # SELECCIÓN DE SETUP
     setup = select_setup(context)
 
     if not setup:
@@ -113,9 +154,7 @@ def run_cycle():
 
     print("🧠 SETUP SELECCIONADO:", setup["name"], f"(score: {setup['score']:.2f})")
 
-    # ------------------------------------------------------------------
-    # 4. EVALUAR SEÑAL (ÚNICO PUNTO DE ESCRITURA)
-    # ------------------------------------------------------------------
+    # EVALUAR SEÑAL
     signal = evaluate_signal(setup["name"], context, market_data)
 
     if signal is None:
@@ -126,18 +165,14 @@ def run_cycle():
         print("ℹ️ Acción NONE → MT5 no debe operar")
         return
     
-    # ------------------------------------------------------------------
-    # NUEVO: VERIFICAR CONFIANZA MÍNIMA (MÁS ESTRICTO)
-    # ------------------------------------------------------------------
+    # VERIFICAR CONFIANZA MÍNIMA
     confidence = signal.get("confidence", 0)
     if confidence < MIN_CONFIDENCE_THRESHOLD:
         print(f"⚠️ Confianza {confidence:.2%} < {MIN_CONFIDENCE_THRESHOLD:.2%} → señal rechazada")
         print("   Esperando oportunidad con mayor confianza...")
         return
 
-    # ------------------------------------------------------------------
-    # 5. LOG FINAL
-    # ------------------------------------------------------------------
+    # LOG FINAL
     print("📈 SIGNAL FINAL:")
     print(f"   Action: {signal['action']}")
     print(f"   Confidence: {confidence:.2%}")
@@ -165,6 +200,10 @@ def start_bot():
     print(f"   Máximo trades/día: {MAX_DAILY_TRADES}")
     print(f"   Confianza mínima: {MIN_CONFIDENCE_THRESHOLD:.0%}")
     print(f"   Max pérdidas consecutivas: {MAX_CONSECUTIVE_LOSSES}")
+    
+    # IMPORTANTE: Limpiar señales viejas al iniciar
+    print("\n🧹 Limpiando señales antiguas...")
+    clear_signal_file()
 
     while RUNNING:
         try:
@@ -178,8 +217,18 @@ def start_bot():
 
     print("🧯 BOT DETENIDO")
     
+    # CRÍTICO: Al detener, eliminar signal.json y crear señal STOP
+    print("\n🛑 Deteniendo sistema de trading...")
+    print("   1. Eliminando señales antiguas...")
+    clear_signal_file()
+    print("   2. Creando señal de STOP para el EA...")
+    create_stop_signal()
+    print("✅ Sistema detenido correctamente")
+    
+    
 def stop_bot():
     global RUNNING
+    print("\n⏹️ Solicitando detención del bot...")
     RUNNING = False
 
 
@@ -187,4 +236,14 @@ def stop_bot():
 # ENTRY POINT
 # ==============================
 if __name__ == "__main__":
-    start_bot()
+    try:
+        start_bot()
+    except KeyboardInterrupt:
+        print("\n\n⌨️ Ctrl+C detectado - Deteniendo bot...")
+        stop_bot()
+    finally:
+        # Asegurar limpieza al salir
+        print("\n🧹 Limpieza final...")
+        clear_signal_file()
+        create_stop_signal()
+        print("👋 Bot cerrado completamente")
