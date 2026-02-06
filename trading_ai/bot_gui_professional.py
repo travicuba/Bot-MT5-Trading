@@ -532,8 +532,8 @@ class TradingBotGUI:
         table_frame.grid_columnconfigure(0, weight=1)
         
         # Tags para colores
-        self.history_tree.tag_configure("WIN", background="#1a4d2e", foreground="#06ffa5")
-        self.history_tree.tag_configure("LOSS", background="#4d1a2e", foreground="#ff006e")
+        self.history_tree.tag_configure("WIN", background="#1a3d2e", foreground="#06ffa5")
+        self.history_tree.tag_configure("LOSS", background="#3d1a2e", foreground="#ff006e")
     
     # ==================== PESTAÑA 4: CONFIGURACIÓN ====================
     
@@ -797,7 +797,7 @@ class TradingBotGUI:
         
         labels = {
             "STOPPED": "DETENIDO",
-            "RUNNING": "CORRIENDO",
+            "RUNNING": "EN EJECUCIÓN",
             "ERROR": "ERROR"
         }
         
@@ -1065,19 +1065,27 @@ Reason: {signal.get('reason', 'N/A')}
         daily_stats = defaultdict(lambda: {"wins": 0, "total": 0})
         for t in history:
             date = t.get("timestamp", "")[:10]
-            daily_stats[date]["total"] += 1
-            if t.get("result") == "WIN":
-                daily_stats[date]["wins"] += 1
+            if date:  # Solo si tiene fecha válida
+                daily_stats[date]["total"] += 1
+                if t.get("result") == "WIN":
+                    daily_stats[date]["wins"] += 1
         
-        dates = sorted(daily_stats.keys())
-        wr_daily = [(daily_stats[d]["wins"] / daily_stats[d]["total"] * 100) 
-                    if daily_stats[d]["total"] > 0 else 0 for d in dates]
-        
-        ax2.bar(range(len(dates)), wr_daily, color='#4895ef', alpha=0.7)
-        ax2.axhline(y=50, color='#ffbe0b', linestyle='--', alpha=0.5)
-        ax2.set_title('Win Rate Diario', color='#e0e6ff', fontsize=10)
-        ax2.tick_params(colors='#8b9dc3')
-        ax2.grid(True, alpha=0.2, color='#4895ef')
+        if daily_stats:  # Solo si hay datos
+            dates = sorted(daily_stats.keys())
+            wr_daily = [(daily_stats[d]["wins"] / daily_stats[d]["total"] * 100) 
+                        if daily_stats[d]["total"] > 0 else 0 for d in dates]
+            
+            colors = ['#06ffa5' if wr >= 50 else '#ff006e' for wr in wr_daily]
+            ax2.bar(range(len(dates)), wr_daily, color=colors, alpha=0.7)
+            ax2.axhline(y=50, color='#ffbe0b', linestyle='--', alpha=0.5, label='50% WR')
+            ax2.set_ylim(0, 100)
+            ax2.set_title('Win Rate Diario', color='#e0e6ff', fontsize=10)
+            ax2.tick_params(colors='#8b9dc3')
+            ax2.grid(True, alpha=0.2, color='#4895ef')
+            ax2.legend(facecolor='#1e2749', edgecolor='#4895ef', fontsize=8)
+        else:
+            ax2.text(0.5, 0.5, 'Datos insuficientes', ha='center', va='center',
+                    color='#8b9dc3', fontsize=10, transform=ax2.transAxes)
         
         # Gráfico 3: Distribución de Pips
         ax3.hist([t.get("pips", 0) for t in history], bins=20, color='#4895ef', alpha=0.7)
@@ -1090,24 +1098,38 @@ Reason: {signal.get('reason', 'N/A')}
         setup_stats = defaultdict(lambda: {"wins": 0, "losses": 0})
         for t in history:
             setup = t.get("setup", "Unknown")
+            # Si setup está vacío, extraer del signal_id
+            if not setup or setup == "Unknown":
+                signal_id = t.get("signal_id", "")
+                parts = signal_id.split("_")
+                if len(parts) >= 4:
+                    setup = "_".join(parts[3:])
+            
             if t.get("result") == "WIN":
                 setup_stats[setup]["wins"] += 1
             else:
                 setup_stats[setup]["losses"] += 1
         
-        setups = list(setup_stats.keys())
-        wins_data = [setup_stats[s]["wins"] for s in setups]
-        losses_data = [setup_stats[s]["losses"] for s in setups]
-        
-        x = range(len(setups))
-        ax4.bar(x, wins_data, label='Wins', color='#06ffa5', alpha=0.7)
-        ax4.bar(x, [-l for l in losses_data], label='Losses', color='#ff006e', alpha=0.7)
-        ax4.set_xticks(x)
-        ax4.set_xticklabels([s[:10] for s in setups], rotation=45, ha='right', fontsize=8)
-        ax4.set_title('Wins/Losses por Setup', color='#e0e6ff', fontsize=10)
-        ax4.tick_params(colors='#8b9dc3')
-        ax4.legend(facecolor='#1e2749', edgecolor='#4895ef', fontsize=8)
-        ax4.grid(True, alpha=0.2, color='#4895ef')
+        if setup_stats:
+            setups = list(setup_stats.keys())
+            wins_data = [setup_stats[s]["wins"] for s in setups]
+            losses_data = [setup_stats[s]["losses"] for s in setups]
+            
+            x = range(len(setups))
+            ax4.bar(x, wins_data, label='Wins', color='#06ffa5', alpha=0.7)
+            ax4.bar(x, [-l for l in losses_data], label='Losses', color='#ff006e', alpha=0.7)
+            ax4.set_xticks(x)
+            # Formatear nombres de setups
+            setup_labels = [s.replace("_", " ")[:15] for s in setups]
+            ax4.set_xticklabels(setup_labels, rotation=45, ha='right', fontsize=8)
+            ax4.set_title('Wins/Losses por Setup', color='#e0e6ff', fontsize=10)
+            ax4.tick_params(colors='#8b9dc3')
+            ax4.legend(facecolor='#1e2749', edgecolor='#4895ef', fontsize=8)
+            ax4.grid(True, alpha=0.2, color='#4895ef')
+            ax4.axhline(y=0, color='#8b9dc3', linestyle='-', alpha=0.3)
+        else:
+            ax4.text(0.5, 0.5, 'Datos insuficientes', ha='center', va='center',
+                    color='#8b9dc3', fontsize=10, transform=ax4.transAxes)
         
         self.fig.tight_layout()
         self.canvas_chart.draw()
@@ -1137,6 +1159,14 @@ Reason: {signal.get('reason', 'N/A')}
             signal_id = trade.get("signal_id", "")
             setup = trade.get("setup", "")
             
+            # Si setup está vacío, extraer del signal_id
+            if not setup:
+                # Format: 20260206_010111_BUY_EURUSD o 20260206_010111_BUY_MEAN_REVERSION
+                parts = signal_id.split("_")
+                if len(parts) >= 4:
+                    # Tomar todo después del BUY/SELL
+                    setup = "_".join(parts[3:])
+            
             # Extraer acción del signal_id
             action = "?"
             if "_BUY_" in signal_id:
@@ -1149,10 +1179,13 @@ Reason: {signal.get('reason', 'N/A')}
             
             tag = "WIN" if result == "WIN" else "LOSS"
             
+            # Formatear setup name (remover guiones bajos)
+            setup_display = setup.replace("_", " ").title() if setup else "Unknown"
+            
             self.history_tree.insert("", "end", values=(
-                timestamp,
-                signal_id[:30] + "..." if len(signal_id) > 30 else signal_id,
-                setup.replace("_", " "),
+                timestamp[:19],  # Solo fecha y hora, sin microsegundos
+                signal_id[:25] + "..." if len(signal_id) > 25 else signal_id,
+                setup_display,
                 action,
                 result,
                 f"{pips:+.2f}"
