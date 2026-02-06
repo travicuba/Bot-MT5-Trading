@@ -146,7 +146,7 @@ class TradingBotGUI:
     def create_dashboard_tab(self):
         """Dashboard principal - Vista en tiempo real"""
         tab = ttk.Frame(self.notebook, style="Dark.TFrame")
-        self.notebook.add(tab, text="  📊 Dashboard  ")
+        self.notebook.add(tab, text="  ▣ Dashboard  ")
         
         # Header con controles
         header = tk.Frame(tab, bg="#151b3d", height=120)
@@ -174,7 +174,7 @@ class TradingBotGUI:
         btn_frame = tk.Frame(header, bg="#151b3d")
         btn_frame.pack(side=tk.LEFT, padx=30, pady=15)
         
-        self.start_btn = tk.Button(btn_frame, text="▶ INICIAR", command=self.start_bot,
+        self.start_btn = tk.Button(btn_frame, text="► INICIAR", command=self.start_bot,
                                    bg="#06ffa5", fg="#0a0e27", font=("Segoe UI", 12, "bold"),
                                    width=12, height=2, relief=tk.FLAT, cursor="hand2",
                                    activebackground="#05dd8f")
@@ -222,7 +222,7 @@ class TradingBotGUI:
     
     def create_quick_stats_panel(self, parent):
         """Panel de estadísticas rápidas"""
-        frame = tk.LabelFrame(parent, text="  📈 ESTADÍSTICAS RÁPIDAS  ", bg="#151b3d",
+        frame = tk.LabelFrame(parent, text="  ▦ ESTADISTICAS RAPIDAS  ", bg="#151b3d",
                              fg="#4895ef", font=("Segoe UI", 12, "bold"),
                              relief=tk.FLAT, borderwidth=2)
         frame.pack(fill=tk.X, pady=5)
@@ -258,7 +258,7 @@ class TradingBotGUI:
     
     def create_market_status_panel(self, parent):
         """Panel de estado del mercado"""
-        frame = tk.LabelFrame(parent, text="  🌐 MERCADO ACTUAL  ", bg="#151b3d",
+        frame = tk.LabelFrame(parent, text="  ◐ MERCADO ACTUAL  ", bg="#151b3d",
                              fg="#4895ef", font=("Segoe UI", 12, "bold"),
                              relief=tk.FLAT, borderwidth=2)
         frame.pack(fill=tk.X, pady=5)
@@ -290,7 +290,7 @@ class TradingBotGUI:
     
     def create_last_signal_panel(self, parent):
         """Panel de última señal"""
-        frame = tk.LabelFrame(parent, text="  🎯 ÚLTIMA SEÑAL  ", bg="#151b3d",
+        frame = tk.LabelFrame(parent, text="  ◉ ULTIMA SENAL  ", bg="#151b3d",
                              fg="#4895ef", font=("Segoe UI", 12, "bold"),
                              relief=tk.FLAT, borderwidth=2)
         frame.pack(fill=tk.BOTH, expand=True, pady=5)
@@ -304,7 +304,7 @@ class TradingBotGUI:
     
     def create_logs_panel(self, parent):
         """Panel de logs con colores"""
-        frame = tk.LabelFrame(parent, text="  📋 LOGS DEL SISTEMA  ", bg="#151b3d",
+        frame = tk.LabelFrame(parent, text="  ▤ LOGS DEL SISTEMA  ", bg="#151b3d",
                              fg="#4895ef", font=("Segoe UI", 12, "bold"),
                              relief=tk.FLAT, borderwidth=2)
         frame.pack(fill=tk.BOTH, expand=True)
@@ -313,7 +313,7 @@ class TradingBotGUI:
         toolbar = tk.Frame(frame, bg="#151b3d")
         toolbar.pack(fill=tk.X, padx=5, pady=5)
         
-        tk.Button(toolbar, text="✗ Limpiar", command=self.clear_logs,
+        tk.Button(toolbar, text="× Limpiar", command=self.clear_logs,
                  bg="#ff006e", fg="white", relief=tk.FLAT, cursor="hand2",
                  font=("Segoe UI", 9, "bold")).pack(side=tk.RIGHT, padx=2)
         
@@ -337,7 +337,7 @@ class TradingBotGUI:
     def create_statistics_tab(self):
         """Pestaña de estadísticas avanzadas"""
         tab = ttk.Frame(self.notebook, style="Dark.TFrame")
-        self.notebook.add(tab, text="  📊 Estadísticas  ")
+        self.notebook.add(tab, text="  ▤ Estadisticas  ")
         
         # Header
         header = tk.Frame(tab, bg="#151b3d")
@@ -471,7 +471,7 @@ class TradingBotGUI:
     def create_history_tab(self):
         """Pestaña de historial de trades"""
         tab = ttk.Frame(self.notebook, style="Dark.TFrame")
-        self.notebook.add(tab, text="  📜 Historial  ")
+        self.notebook.add(tab, text="  ≡ Historial  ")
         
         # Header
         header = tk.Frame(tab, bg="#151b3d")
@@ -488,7 +488,7 @@ class TradingBotGUI:
                  bg="#4895ef", fg="white", relief=tk.FLAT, cursor="hand2",
                  font=("Segoe UI", 9, "bold")).pack(side=tk.LEFT, padx=2)
         
-        tk.Button(btn_frame, text="📥 Exportar CSV", command=self.export_history,
+        tk.Button(btn_frame, text="↓ Exportar CSV", command=self.export_history,
                  bg="#06ffa5", fg="#0a0e27", relief=tk.FLAT, cursor="hand2",
                  font=("Segoe UI", 9, "bold")).pack(side=tk.LEFT, padx=2)
         
@@ -540,7 +540,7 @@ class TradingBotGUI:
     def create_config_tab(self):
         """Pestaña de configuración"""
         tab = ttk.Frame(self.notebook, style="Dark.TFrame")
-        self.notebook.add(tab, text="  ⚙️ Configuración  ")
+        self.notebook.add(tab, text="  ⚙ Configuracion  ")
         
         # Header
         header = tk.Frame(tab, bg="#151b3d")
@@ -549,7 +549,7 @@ class TradingBotGUI:
         tk.Label(header, text="CONFIGURACIÓN DEL BOT", bg="#151b3d", fg="#4895ef",
                 font=("Segoe UI", 18, "bold")).pack(side=tk.LEFT, padx=20)
         
-        tk.Button(header, text="💾 Guardar Cambios", command=self.save_config_changes,
+        tk.Button(header, text="✓ Guardar Cambios", command=self.save_config_changes,
                  bg="#06ffa5", fg="#0a0e27", relief=tk.FLAT, cursor="hand2",
                  font=("Segoe UI", 11, "bold")).pack(side=tk.RIGHT, padx=20)
         
@@ -673,7 +673,7 @@ class TradingBotGUI:
     def create_system_tab(self):
         """Pestaña de información del sistema"""
         tab = ttk.Frame(self.notebook, style="Dark.TFrame")
-        self.notebook.add(tab, text="  🔧 Sistema  ")
+        self.notebook.add(tab, text="  ◈ Sistema  ")
         
         # Header
         header = tk.Frame(tab, bg="#151b3d")
