@@ -118,23 +118,36 @@ def process_feedback():
         signal_id = feedback["signal_id"]
         result = feedback["result"]  # WIN o LOSS
         pips = feedback.get("pips", 0)
-        
-        # NUEVO: Verificar si ya fue procesado
-        if is_already_processed(signal_id):
-            print(f"ℹ️ Señal {signal_id} ya fue procesada anteriormente, ignorando...")
-            # Eliminar el archivo feedback para que no siga intentando
+
+        # Ignorar feedback de trades manuales (signal_id vacío)
+        if not signal_id or signal_id.strip() == "":
+            print("ℹ️ Trade manual detectado (sin signal_id), ignorando feedback")
             try:
                 os.remove(FEEDBACK_FILE)
             except:
                 pass
             return False
-        
+
+        # Verificar si ya fue procesado
+        if is_already_processed(signal_id):
+            print(f"ℹ️ Señal {signal_id} ya fue procesada anteriormente, ignorando...")
+            try:
+                os.remove(FEEDBACK_FILE)
+            except:
+                pass
+            return False
+
         # Extraer el setup del signal_id
+        # Formato esperado: YYYYMMDD_HHMMSS_ACTION_SETUP_NAME
         parts = signal_id.split("_")
         if len(parts) < 4:
             print(f"⚠️ Signal ID con formato incorrecto: {signal_id}")
+            try:
+                os.remove(FEEDBACK_FILE)
+            except:
+                pass
             return False
-        
+
         setup_name = "_".join(parts[3:])
         
         # Cargar estadísticas actuales
