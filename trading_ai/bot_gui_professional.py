@@ -11,14 +11,61 @@ Pestañas:
 
 import threading
 import tkinter as tk
-from tkinter import ttk, scrolledtext, messagebox
+from tkinter import ttk, scrolledtext, messagebox, filedialog
 from datetime import datetime, timedelta
 import sys
 import json
 import os
+import time
 from collections import defaultdict
 
 import main
+
+
+# ==============================
+# BOT STATUS
+# ==============================
+BOT_STATUS_FILE = "/home/travieso/.wine/drive_c/Program Files/MetaTrader 5/MQL5/Files/bot_status.json"
+
+def write_bot_status(running: bool):
+    """Escribe bot_status.json para EA"""
+    try:
+        import time
+        data = {
+            "running": running,
+            "timestamp": datetime.now().isoformat(),
+            "unix_time": int(time.time())
+        }
+        os.makedirs(os.path.dirname(BOT_STATUS_FILE), exist_ok=True)
+        
+        with open(BOT_STATUS_FILE, "w") as f:
+            json.dump(data, f, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        
+        os.utime(BOT_STATUS_FILE, None)
+        return True
+    except Exception as e:
+        print(f"Error bot_status: {e}")
+        return False
+
+# Módulos de análisis - importación simple
+BACKTESTING_AVAILABLE = False
+ML_ANALYSIS_AVAILABLE = False
+
+try:
+    from backtesting_engine import BacktestEngine, load_historical_data
+    BACKTESTING_AVAILABLE = True
+    print("✅ Backtesting cargado correctamente")
+except Exception as e:
+    print(f"⚠️ Backtesting no disponible: {e}")
+
+try:
+    from ml_analyzer import MLAnalyzer
+    ML_ANALYSIS_AVAILABLE = True
+    print("✅ ML Analysis cargado correctamente")
+except Exception as e:
+    print(f"⚠️ ML Analysis no disponible: {e}")
 
 # Intentar importar matplotlib para gráficos
 try:
@@ -42,6 +89,8 @@ class TradingBotGUI:
         
         # Variables de estado
         self.running_thread = None
+        self.status_thread = None
+        self.ea_log_thread = None
         self.bot_state = "STOPPED"
         self.stats = {
             "total_trades": 0,
@@ -66,6 +115,15 @@ class TradingBotGUI:
         self.create_history_tab()
         self.create_config_tab()
         self.create_system_tab()
+        self.create_debug_tab()
+      
+        
+        
+        # Nuevas pestañas
+        if ML_ANALYSIS_AVAILABLE:
+            self.create_ml_tab()
+        if BACKTESTING_AVAILABLE:
+            self.create_backtest_tab()
         
         # Inicializar
         self.load_stats()
@@ -701,10 +759,11 @@ class TradingBotGUI:
         container.pack(fill=tk.X, padx=20, pady=20)
         
         info = [
-            ("Versión del Bot:", "v2.0.0"),
+            ("Versión del Bot:", "v2.0.1"),
             ("Python:", f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"),
             ("Sistema Operativo:", os.name),
-            ("Directorio de Trabajo:", os.getcwd())
+            ("Directorio de Trabajo:", os.getcwd()),
+            ("Elaborado por:", "Daniel Hernández")
         ]
         
         for label, value in info:
@@ -732,7 +791,559 @@ class TradingBotGUI:
         
         self.check_file_status()
     
+    # ==================== PESTAÑA 7: BACKTESTING ====================
+    
+    def create_backtest_tab(self):
+        """Pestaña de backtesting"""
+        tab = ttk.Frame(self.notebook, style="Dark.TFrame")
+        self.notebook.add(tab, text="  ◈ Backtesting  ")
+        
+        # Header
+        header = tk.Frame(tab, bg="#151b3d")
+        header.pack(fill=tk.X, padx=10, pady=10)
+        
+        tk.Label(header, text="SISTEMA DE BACKTESTING", bg="#151b3d", fg="#4895ef",
+                font=("Segoe UI", 18, "bold")).pack(side=tk.LEFT, padx=20)
+        
+        # Contenido
+        content = tk.Frame(tab, bg="#0a0e27")
+        content.pack(fill=tk.BOTH, expand=True, padx=10)
+        
+        # Panel superior - Configuración
+        top = tk.Frame(content, bg="#0a0e27")
+        top.pack(fill=tk.X, pady=5)
+        
+        config_frame = tk.LabelFrame(top, text="  CONFIGURACION DEL BACKTEST  ", bg="#151b3d",
+                                     fg="#4895ef", font=("Segoe UI", 11, "bold"),
+                                     relief=tk.FLAT, borderwidth=2)
+        config_frame.pack(fill=tk.X, padx=10, pady=5)
+        
+        # Archivo de datos
+        file_row = tk.Frame(config_frame, bg="#151b3d")
+        file_row.pack(fill=tk.X, padx=20, pady=10)
+        
+        tk.Label(file_row, text="Archivo de datos:", bg="#151b3d", fg="#e0e6ff",
+                font=("Segoe UI", 10)).pack(side=tk.LEFT, padx=5)
+        
+        self.bt_file_var = tk.StringVar(value="Seleccionar archivo...")
+        tk.Entry(file_row, textvariable=self.bt_file_var, bg="#1e2749", fg="#e0e6ff",
+                font=("Segoe UI", 9), relief=tk.FLAT, width=40).pack(side=tk.LEFT, padx=5)
+        
+        tk.Button(file_row, text="Buscar", command=self.select_backtest_file,
+                 bg="#4895ef", fg="white", relief=tk.FLAT, cursor="hand2",
+                 font=("Segoe UI", 9, "bold")).pack(side=tk.LEFT, padx=5)
+        
+        # Configuración de parámetros
+        params_row = tk.Frame(config_frame, bg="#151b3d")
+        params_row.pack(fill=tk.X, padx=20, pady=10)
+        
+        # Balance inicial
+        tk.Label(params_row, text="Balance inicial:", bg="#151b3d", fg="#e0e6ff",
+                font=("Segoe UI", 10), width=15, anchor="w").pack(side=tk.LEFT)
+        
+        self.bt_balance_var = tk.IntVar(value=10000)
+        tk.Entry(params_row, textvariable=self.bt_balance_var, bg="#1e2749", fg="#e0e6ff",
+                font=("Segoe UI", 9), relief=tk.FLAT, width=10).pack(side=tk.LEFT, padx=5)
+        
+        # Tamaño de lote
+        tk.Label(params_row, text="Lote:", bg="#151b3d", fg="#e0e6ff",
+                font=("Segoe UI", 10), width=10, anchor="w").pack(side=tk.LEFT, padx=(20, 0))
+        
+        self.bt_lot_var = tk.DoubleVar(value=0.01)
+        tk.Entry(params_row, textvariable=self.bt_lot_var, bg="#1e2749", fg="#e0e6ff",
+                font=("Segoe UI", 9), relief=tk.FLAT, width=10).pack(side=tk.LEFT, padx=5)
+        
+        # Botón ejecutar
+        btn_row = tk.Frame(config_frame, bg="#151b3d")
+        btn_row.pack(fill=tk.X, padx=20, pady=10)
+        
+        self.bt_run_btn = tk.Button(btn_row, text="▶ EJECUTAR BACKTEST", 
+                                    command=self.run_backtest,
+                                    bg="#06ffa5", fg="#0a0e27", relief=tk.FLAT, cursor="hand2",
+                                    font=("Segoe UI", 12, "bold"), width=25)
+        self.bt_run_btn.pack(side=tk.LEFT, padx=5)
+        
+        tk.Button(btn_row, text="↓ Exportar Resultados", command=self.export_backtest,
+                 bg="#4895ef", fg="white", relief=tk.FLAT, cursor="hand2",
+                 font=("Segoe UI", 10, "bold")).pack(side=tk.LEFT, padx=5)
+        
+        # Progress bar
+        self.bt_progress = ttk.Progressbar(config_frame, orient=tk.HORIZONTAL, 
+                                          length=400, mode='determinate')
+        self.bt_progress.pack(fill=tk.X, padx=20, pady=(0, 10))
+        
+        # Panel inferior - Resultados
+        bottom = tk.Frame(content, bg="#0a0e27")
+        bottom.pack(fill=tk.BOTH, expand=True, pady=5)
+        
+        # Panel izquierdo - Métricas
+        left = tk.Frame(bottom, bg="#0a0e27", width=400)
+        left.pack(side=tk.LEFT, fill=tk.BOTH, padx=(0, 5))
+        
+        # Panel derecho - Gráficos
+        right = tk.Frame(bottom, bg="#0a0e27")
+        right.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        # Crear paneles de resultados
+        self.create_backtest_results_panel(left)
+        
+        if MATPLOTLIB_AVAILABLE:
+            self.create_backtest_charts_panel(right)
+        else:
+            tk.Label(right, text="Matplotlib no disponible", bg="#0a0e27",
+                    fg="#ff006e", font=("Segoe UI", 12)).pack(pady=50)
+        
+        # Variables para almacenar resultados
+        self.backtest_results = None
+    
+    def create_backtest_results_panel(self, parent):
+        """Panel de resultados del backtest"""
+        frame = tk.LabelFrame(parent, text="  RESULTADOS  ", bg="#151b3d",
+                             fg="#4895ef", font=("Segoe UI", 11, "bold"),
+                             relief=tk.FLAT, borderwidth=2)
+        frame.pack(fill=tk.BOTH, expand=True, pady=5)
+        
+        self.bt_results_text = scrolledtext.ScrolledText(
+            frame, height=25, bg="#1e2749", fg="#e0e6ff",
+            font=("Consolas", 9), relief=tk.FLAT, wrap=tk.WORD
+        )
+        self.bt_results_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        
+        # Mensaje inicial
+        self.bt_results_text.insert(tk.END, "⏳ Esperando datos históricos...\n\n")
+        self.bt_results_text.insert(tk.END, "Para ejecutar un backtest:\n")
+        self.bt_results_text.insert(tk.END, "1. Click en 'Buscar' para seleccionar archivo\n")
+        self.bt_results_text.insert(tk.END, "2. Ajustar parámetros si es necesario\n")
+        self.bt_results_text.insert(tk.END, "3. Click en 'EJECUTAR BACKTEST'\n")
+    
+    def create_backtest_charts_panel(self, parent):
+        """Panel de gráficos del backtest"""
+        frame = tk.LabelFrame(parent, text="  GRAFICOS  ", bg="#151b3d",
+                             fg="#4895ef", font=("Segoe UI", 11, "bold"),
+                             relief=tk.FLAT, borderwidth=2)
+        frame.pack(fill=tk.BOTH, expand=True, pady=5)
+        
+        # Crear figura
+        self.bt_fig = Figure(figsize=(8, 6), facecolor='#151b3d')
+        self.bt_canvas = FigureCanvasTkAgg(self.bt_fig, master=frame)
+        self.bt_canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+    
+    def select_backtest_file(self):
+        """Seleccionar archivo de datos históricos"""
+        filepath = filedialog.askopenfilename(
+            title="Seleccionar archivo de datos históricos",
+            filetypes=[
+                ("JSON files", "*.json"),
+                ("CSV files", "*.csv"),
+                ("All files", "*.*")
+            ]
+        )
+        
+        if filepath:
+            self.bt_file_var.set(filepath)
+            
+            # Verificar archivo
+            try:
+                if filepath.endswith(".json"):
+                    with open(filepath, "r") as f:
+                        data = json.load(f)
+                    count = len(data)
+                elif filepath.endswith(".csv"):
+                    with open(filepath, "r") as f:
+                        count = sum(1 for line in f) - 1  # -1 por header
+                else:
+                    count = "?"
+                
+                messagebox.showinfo("Archivo cargado", 
+                                  f"Archivo cargado correctamente.\n{count} puntos de datos detectados.")
+            except Exception as e:
+                messagebox.showerror("Error", f"No se pudo leer el archivo:\n{e}")
+    
+    def run_backtest(self):
+        """Ejecutar backtest"""
+        filepath = self.bt_file_var.get()
+        
+        if filepath == "Seleccionar archivo..." or not os.path.exists(filepath):
+            messagebox.showwarning("Advertencia", "Por favor selecciona un archivo de datos.")
+            return
+        
+        # Deshabilitar botón
+        self.bt_run_btn.config(state=tk.DISABLED, text="EJECUTANDO...")
+        self.bt_progress['value'] = 0
+        self.root.update()
+        
+        try:
+            # Cargar datos
+            self.bt_results_text.delete(1.0, tk.END)
+            self.bt_results_text.insert(tk.END, "📂 Cargando datos históricos...\n")
+            self.root.update()
+            
+            historical_data = load_historical_data(filepath)
+            
+            self.bt_results_text.insert(tk.END, f"✅ {len(historical_data)} puntos cargados\n\n")
+            self.root.update()
+            
+            # Configurar backtest
+            config = {
+                "initial_balance": self.bt_balance_var.get(),
+                "lot_size": self.bt_lot_var.get(),
+                "pip_value": 10,
+                "max_trades_per_day": 20,
+                "min_confidence": 0.75,
+                "commission_per_trade": 0.0
+            }
+            
+            # Crear engine
+            engine = BacktestEngine(historical_data, config)
+            
+            # Ejecutar con callback de progreso
+            def progress_callback(progress):
+                self.bt_progress['value'] = progress
+                self.root.update()
+            
+            self.bt_results_text.insert(tk.END, "🧪 Ejecutando simulación...\n")
+            self.root.update()
+            
+            results = engine.run_backtest(progress_callback)
+            
+            self.backtest_results = results
+            
+            # Mostrar resultados
+            self.display_backtest_results(results)
+            
+            # Actualizar gráficos
+            if MATPLOTLIB_AVAILABLE:
+                self.update_backtest_charts(results)
+            
+            messagebox.showinfo("Éxito", "Backtest completado correctamente!")
+            
+        except Exception as e:
+            self.bt_results_text.insert(tk.END, f"\n❌ ERROR: {e}\n")
+            messagebox.showerror("Error", f"Error ejecutando backtest:\n{e}")
+            import traceback
+            traceback.print_exc()
+        
+        finally:
+            self.bt_run_btn.config(state=tk.NORMAL, text="▶ EJECUTAR BACKTEST")
+            self.bt_progress['value'] = 100
+    
+    def display_backtest_results(self, results):
+        """Mostrar resultados del backtest"""
+        self.bt_results_text.delete(1.0, tk.END)
+        
+        stats = results['stats']
+        
+        self.bt_results_text.insert(tk.END, "═══════════════════════════════════════\n", "header")
+        self.bt_results_text.insert(tk.END, "  RESULTADOS DEL BACKTEST\n", "header")
+        self.bt_results_text.insert(tk.END, "═══════════════════════════════════════\n\n", "header")
+        
+        # Stats generales
+        self.bt_results_text.insert(tk.END, "ESTADISTICAS GENERALES:\n", "subheader")
+        self.bt_results_text.insert(tk.END, f"  Total Trades: {stats['total_trades']}\n")
+        self.bt_results_text.insert(tk.END, f"  Ganadas: {stats['wins']}\n", "success")
+        self.bt_results_text.insert(tk.END, f"  Perdidas: {stats['losses']}\n", "error")
+        self.bt_results_text.insert(tk.END, f"  Win Rate: {stats.get('win_rate', 0):.2f}%\n\n")
+        
+        # Performance
+        self.bt_results_text.insert(tk.END, "PERFORMANCE:\n", "subheader")
+        profit = stats.get('total_profit', 0)
+        profit_color = "success" if profit >= 0 else "error"
+        self.bt_results_text.insert(tk.END, f"  Beneficio Total: ${profit:.2f}\n", profit_color)
+        self.bt_results_text.insert(tk.END, f"  Retorno: {stats.get('return_pct', 0):.2f}%\n", profit_color)
+        self.bt_results_text.insert(tk.END, f"  Total Pips: {stats['total_pips']:.2f}\n\n")
+        
+        # Trades
+        self.bt_results_text.insert(tk.END, "ANALISIS DE TRADES:\n", "subheader")
+        self.bt_results_text.insert(tk.END, f"  Avg Win: {stats.get('avg_win', 0):.2f} pips\n", "success")
+        self.bt_results_text.insert(tk.END, f"  Avg Loss: {stats.get('avg_loss', 0):.2f} pips\n", "error")
+        self.bt_results_text.insert(tk.END, f"  Mejor Trade: {stats.get('best_trade', 0):.2f} pips\n")
+        self.bt_results_text.insert(tk.END, f"  Peor Trade: {stats.get('worst_trade', 0):.2f} pips\n")
+        self.bt_results_text.insert(tk.END, f"  Profit Factor: {stats.get('profit_factor', 0):.2f}\n\n")
+        
+        # Risk
+        self.bt_results_text.insert(tk.END, "GESTION DE RIESGO:\n", "subheader")
+        self.bt_results_text.insert(tk.END, f"  Max Drawdown: ${stats.get('max_drawdown', 0):.2f}\n", "error")
+        self.bt_results_text.insert(tk.END, f"  Max DD %: {stats.get('max_drawdown_pct', 0):.2f}%\n", "error")
+        self.bt_results_text.insert(tk.END, f"  Sharpe Ratio: {stats.get('sharpe_ratio', 0):.2f}\n\n")
+        
+        # Configurar tags
+        self.bt_results_text.tag_config("header", foreground="#4895ef", font=("Consolas", 10, "bold"))
+        self.bt_results_text.tag_config("subheader", foreground="#e0e6ff", font=("Consolas", 9, "bold"))
+        self.bt_results_text.tag_config("success", foreground="#06ffa5")
+        self.bt_results_text.tag_config("error", foreground="#ff006e")
+    
+    def update_backtest_charts(self, results):
+        """Actualizar gráficos del backtest"""
+        self.bt_fig.clear()
+        
+        # Gráfico 1: Equity Curve
+        ax1 = self.bt_fig.add_subplot(221, facecolor='#1e2749')
+        
+        equity = results['equity_curve']
+        ax1.plot(equity, color='#06ffa5' if equity[-1] >= 0 else '#ff006e', linewidth=2)
+        ax1.axhline(y=0, color='#8b9dc3', linestyle='--', alpha=0.5)
+        ax1.set_title('Equity Curve', color='#e0e6ff', fontsize=10)
+        ax1.set_xlabel('Trades', color='#8b9dc3', fontsize=8)
+        ax1.set_ylabel('Profit/Loss $', color='#8b9dc3', fontsize=8)
+        ax1.tick_params(colors='#8b9dc3')
+        ax1.grid(True, alpha=0.2, color='#4895ef')
+        
+        # Gráfico 2: Win/Loss Distribution
+        ax2 = self.bt_fig.add_subplot(222, facecolor='#1e2749')
+        
+        trades = results['trades']
+        pips = [t['pips'] for t in trades]
+        
+        ax2.hist(pips, bins=20, color='#4895ef', alpha=0.7, edgecolor='#06ffa5')
+        ax2.axvline(x=0, color='#8b9dc3', linestyle='--', alpha=0.5)
+        ax2.set_title('Distribución de Resultados', color='#e0e6ff', fontsize=10)
+        ax2.set_xlabel('Pips', color='#8b9dc3', fontsize=8)
+        ax2.set_ylabel('Frecuencia', color='#8b9dc3', fontsize=8)
+        ax2.tick_params(colors='#8b9dc3')
+        ax2.grid(True, alpha=0.2, color='#4895ef', axis='y')
+        
+        # Gráfico 3: Drawdown
+        ax3 = self.bt_fig.add_subplot(223, facecolor='#1e2749')
+        
+        peak = 0
+        drawdown = [0]
+        for eq in equity[1:]:
+            if eq > peak:
+                peak = eq
+            dd = eq - peak
+            drawdown.append(dd)
+        
+        ax3.fill_between(range(len(drawdown)), drawdown, 0, color='#ff006e', alpha=0.3)
+        ax3.plot(drawdown, color='#ff006e', linewidth=2)
+        ax3.set_title('Drawdown', color='#e0e6ff', fontsize=10)
+        ax3.set_xlabel('Trades', color='#8b9dc3', fontsize=8)
+        ax3.set_ylabel('Drawdown $', color='#8b9dc3', fontsize=8)
+        ax3.tick_params(colors='#8b9dc3')
+        ax3.grid(True, alpha=0.2, color='#4895ef')
+        
+        # Gráfico 4: Wins vs Losses by Setup
+        ax4 = self.bt_fig.add_subplot(224, facecolor='#1e2749')
+        
+        setup_stats = defaultdict(lambda: {"wins": 0, "losses": 0})
+        for trade in trades:
+            setup = trade['setup']
+            if trade['pips'] > 0:
+                setup_stats[setup]["wins"] += 1
+            else:
+                setup_stats[setup]["losses"] += 1
+        
+        if setup_stats:
+            setups = list(setup_stats.keys())[:5]  # Top 5
+            wins = [setup_stats[s]["wins"] for s in setups]
+            losses = [setup_stats[s]["losses"] for s in setups]
+            
+            x = range(len(setups))
+            width = 0.35
+            
+            ax4.bar([i - width/2 for i in x], wins, width, label='Wins', 
+                   color='#06ffa5', alpha=0.7)
+            ax4.bar([i + width/2 for i in x], losses, width, label='Losses', 
+                   color='#ff006e', alpha=0.7)
+            
+            ax4.set_xticks(x)
+            ax4.set_xticklabels([s[:10] for s in setups], rotation=45, ha='right', fontsize=7)
+            ax4.set_title('Performance por Setup', color='#e0e6ff', fontsize=10)
+            ax4.set_ylabel('Trades', color='#8b9dc3', fontsize=8)
+            ax4.tick_params(colors='#8b9dc3')
+            ax4.legend(facecolor='#1e2749', edgecolor='#4895ef', fontsize=8)
+            ax4.grid(True, alpha=0.2, color='#4895ef', axis='y')
+        
+        self.bt_fig.tight_layout()
+        self.bt_canvas.draw()
+    
+    def export_backtest(self):
+        """Exportar resultados del backtest"""
+        if not self.backtest_results:
+            messagebox.showwarning("Advertencia", "No hay resultados para exportar.")
+            return
+        
+        filepath = filedialog.asksaveasfilename(
+            defaultextension=".json",
+            filetypes=[("JSON files", "*.json"), ("All files", "*.*")]
+        )
+        
+        if filepath:
+            try:
+                with open(filepath, "w") as f:
+                    json.dump(self.backtest_results, f, indent=4)
+                
+                messagebox.showinfo("Éxito", f"Resultados exportados a:\n{filepath}")
+            except Exception as e:
+                messagebox.showerror("Error", f"No se pudo exportar:\n{e}")
+    
+# ==================== PESTAÑA 8 Debugs ====================
+    
+    def create_debug_tab(self):
+        """Pestaña de Debugs del Bot"""
+        tab = ttk.Frame(self.notebook, style="Dark.TFrame")
+        self.notebook.add(tab, text="  🐞 Debugs  ")
+
+        header = tk.Frame(tab, bg="#151b3d")
+        header.pack(fill=tk.X, padx=10, pady=10)
+
+        tk.Label(
+            header,
+            text="DEBUG DEL BOT (debug.json)",
+            bg="#151b3d",
+            fg="#4895ef",
+            font=("Segoe UI", 18, "bold")
+        ).pack(side=tk.LEFT, padx=20)
+
+        tk.Button(
+            header,
+            text="↻ Actualizar",
+            command=self.update_debug_view,
+            bg="#4895ef",
+            fg="white",
+            relief=tk.FLAT,
+            cursor="hand2",
+            font=("Segoe UI", 10, "bold")
+        ).pack(side=tk.RIGHT, padx=20)
+
+        frame = tk.Frame(tab, bg="#0a0e27")
+        frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        self.debug_text = scrolledtext.ScrolledText(
+            frame,
+            bg="#1e2749",
+            fg="#e0e6ff",
+            font=("Consolas", 10),
+            relief=tk.FLAT,
+            wrap=tk.WORD
+        )
+        self.debug_text.pack(fill=tk.BOTH, expand=True)
+
+        self.debug_text.tag_config("ERROR", foreground="#ff006e")
+        self.debug_text.tag_config("WARN", foreground="#ffbe0b")
+        self.debug_text.tag_config("OK", foreground="#06ffa5")
+        self.debug_text.tag_config("INFO", foreground="#4895ef")
+
+        self.update_debug_view()
+
+
+    def update_debug_view(self):
+        debug_file = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "logs",
+            "debug.json"
+        )
+
+        self.debug_text.delete(1.0, tk.END)
+
+        if not os.path.exists(debug_file):
+            self.debug_text.insert(
+                tk.END,
+                "❌ debug.json no existe\n",
+                "ERROR"
+            )
+            return
+
+        try:
+            with open(debug_file, "r", encoding="utf-8") as f:
+                data = json.load(f)   # 👈 AQUÍ ESTABA LA CLAVE
+
+            if not isinstance(data, list):
+                self.debug_text.insert(
+                    tk.END,
+                    "⚠️ debug.json no es una lista de eventos\n",
+                    "WARN"
+                )
+                return
+
+            for entry in data[-100:]:  # últimos 100 eventos
+                level = str(entry.get("level", "INFO")).upper()
+                msg = entry.get("message", "")
+                ts = entry.get("timestamp", "")
+
+                tag = "INFO"
+                if level in ("ERROR", "CRITICAL"):
+                    tag = "ERROR"
+                elif level in ("WARN", "WARNING"):
+                    tag = "WARN"
+                elif level in ("OK", "SUCCESS"):
+                    tag = "OK"
+
+                self.debug_text.insert(
+                    tk.END,
+                    f"[{ts}] [{level}] {msg}\n",
+                    tag
+                )
+
+        except Exception as e:
+            self.debug_text.insert(
+                tk.END,
+                f"❌ Error leyendo debug.json:\n{e}\n",
+                "ERROR"
+            )
+
+
     # ==================== MÉTODOS DE CONTROL ====================
+    
+    def monitor_ea_logs(self):
+        """Thread que monitorea logs del EA en MT5"""
+        mt5_logs_dir = os.path.expanduser("~/.wine/drive_c/Program Files/MetaTrader 5/Logs")
+        
+        if not os.path.exists(mt5_logs_dir):
+            self.write("[EA Monitor] Directorio de logs no encontrado\n", "WARNING")
+            return
+        
+        # Buscar log más reciente
+        try:
+            log_files = [f for f in os.listdir(mt5_logs_dir) if f.endswith('.log')]
+            if not log_files:
+                self.write("[EA Monitor] No se encontraron archivos de log\n", "WARNING")
+                return
+            
+            log_files.sort(key=lambda x: os.path.getmtime(os.path.join(mt5_logs_dir, x)), reverse=True)
+            latest_log = os.path.join(mt5_logs_dir, log_files[0])
+            
+            self.write(f"[EA Monitor] Monitoreando: {log_files[0]}\n", "INFO")
+            
+            with open(latest_log, 'r', encoding='utf-16-le', errors='ignore') as f:
+                # Ir al final del archivo
+                f.seek(0, 2)
+                file_size = f.tell()
+                
+                while self.bot_state == "RUNNING":
+                    current_size = os.path.getsize(latest_log)
+                    
+                    if current_size > file_size:
+                        f.seek(file_size)
+                        new_lines = f.readlines()
+                        
+                        for line in new_lines:
+                            line = line.strip()
+                            if not line:
+                                continue
+                            
+                            # Filtrar líneas relevantes del EA
+                            keywords = [
+                                'EA SignalExecutor', 'BOT', 'SEÑAL', 'SIGNAL', 
+                                'ORDEN', 'TRADE', 'BUY', 'SELL', 'CORRIENDO',
+                                '✅', '❌', '⚠️', '🛑', '📈', '📉'
+                            ]
+                            
+                            if any(keyword in line for keyword in keywords):
+                                # Extraer solo el mensaje
+                                if '\t' in line:
+                                    parts = line.split('\t')
+                                    msg = parts[-1] if len(parts) > 1 else line
+                                else:
+                                    msg = line
+                                
+                                self.write(f"[EA] {msg}\n", "SUCCESS")
+                        
+                        file_size = current_size
+                    
+                    time.sleep(1)
+                    
+        except Exception as e:
+            self.write(f"[EA Monitor] Error: {e}\n", "ERROR")
     
     def start_bot(self):
         """Iniciar el bot"""
@@ -749,11 +1360,34 @@ class TradingBotGUI:
         
         self.running_thread = threading.Thread(target=main.start_bot, daemon=True)
         self.running_thread.start()
+        
+        # Escribir bot_status inicial
+        write_bot_status(True)
+        
+        # Thread de status (actualiza cada 2s)
+        def update_status_loop():
+            while self.bot_state == "RUNNING":
+                write_bot_status(True)
+                time.sleep(2)
+        
+        self.status_thread = threading.Thread(target=update_status_loop, daemon=True)
+        self.status_thread.start()
+        
+        # Thread de monitoreo EA
+        self.ea_log_thread = threading.Thread(target=self.monitor_ea_logs, daemon=True)
+        self.ea_log_thread.start()
+        
+        self.write("✅ Bot iniciado\n", "SUCCESS")
+        self.write("✅ Monitoreando logs del EA...\n", "INFO")
     
     def stop_bot(self):
         """Detener el bot"""
         self.write("■ Deteniendo bot...\n", "WARNING")
         main.stop_bot()
+        
+        # Escribir status STOPPED
+        write_bot_status(False)
+        
         
         self.bot_state = "STOPPED"
         self.update_status_indicator()
@@ -901,7 +1535,7 @@ class TradingBotGUI:
                 pass
     
     def update_last_signal(self):
-        """Actualizar última señal generada"""
+        """Actualizar última señal generada - CORREGIDO"""
         signal_file = "/home/travieso/.wine/drive_c/Program Files/MetaTrader 5/MQL5/Files/signals/signal.json"
         
         if os.path.exists(signal_file):
@@ -913,24 +1547,51 @@ class TradingBotGUI:
                 
                 action = signal.get('action', 'N/A')
                 confidence = signal.get('confidence', 0)
+                signal_id = signal.get('signal_id', 'N/A')
+                timestamp = signal.get('timestamp', 'N/A')
                 
-                text = f"""
-╔══════════════════════════════╗
-  Action: {action}
+                # Formatear timestamp
+                if timestamp != 'N/A' and 'T' in timestamp:
+                    try:
+                        dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+                        timestamp = dt.strftime('%Y-%m-%d %H:%M:%S')
+                    except:
+                        pass
+                
+                # Color según acción
+                if action == "BUY":
+                    action_display = "🟢 BUY"
+                elif action == "SELL":
+                    action_display = "🔴 SELL"
+                elif action == "NONE":
+                    action_display = "⚪ NONE"
+                else:
+                    action_display = f"⚫ {action}"
+                
+                # Construir texto
+                text = f"""╔═══════════════════════════════════╗
+  {action_display}
+╠═══════════════════════════════════╣
   Confidence: {confidence * 100:.1f}%
   SL: {signal.get('sl_pips', 0)} pips
   TP: {signal.get('tp_pips', 0)} pips
+─────────────────────────────────────
   Setup: {signal.get('setup_name', 'N/A')}
-  Time: {signal.get('timestamp', 'N/A')}
-╚══════════════════════════════╝
+  Symbol: {signal.get('symbol', 'N/A')}
+  Timeframe: {signal.get('timeframe', 'N/A')}
+─────────────────────────────────────
+  Time: {timestamp}
+  ID: {signal_id[:30]}...
+╚═══════════════════════════════════╝
 
 Reason: {signal.get('reason', 'N/A')}
-                """
+"""
                 
-                self.signal_text_dash.insert(1.0, text.strip())
+                self.signal_text_dash.insert(1.0, text)
                 
-            except:
-                pass
+            except Exception as e:
+                self.signal_text_dash.delete(1.0, tk.END)
+                self.signal_text_dash.insert(1.0, f"Error leyendo señal: {e}")
     
     def update_statistics_tab(self):
         """Actualizar pestaña de estadísticas"""
@@ -1319,6 +1980,250 @@ Reason: {signal.get('reason', 'N/A')}
         self.file_status_text.tag_config("red", foreground="#ff006e")
         self.file_status_text.tag_config("INFO", foreground="#e0e6ff")
         self.file_status_text.tag_config("WARNING", foreground="#ffbe0b")
+    
+    # ==================== PESTAÑA 6: MACHINE LEARNING ====================
+    
+    def create_ml_tab(self):
+        """Pestaña de análisis de Machine Learning"""
+        tab = ttk.Frame(self.notebook, style="Dark.TFrame")
+        self.notebook.add(tab, text="  ◉ Machine Learning  ")
+        
+        # Header
+        header = tk.Frame(tab, bg="#151b3d")
+        header.pack(fill=tk.X, padx=10, pady=10)
+        
+        tk.Label(header, text="ANALISIS DE APRENDIZAJE", bg="#151b3d", fg="#4895ef",
+                font=("Segoe UI", 18, "bold")).pack(side=tk.LEFT, padx=20)
+        
+        tk.Button(header, text="↻ Analizar", command=self.run_ml_analysis,
+                 bg="#4895ef", fg="white", relief=tk.FLAT, cursor="hand2",
+                 font=("Segoe UI", 11, "bold")).pack(side=tk.RIGHT, padx=20)
+        
+        # Contenido
+        content = tk.Frame(tab, bg="#0a0e27")
+        content.pack(fill=tk.BOTH, expand=True, padx=10)
+        
+        # Panel izquierdo - Métricas
+        left = tk.Frame(content, bg="#0a0e27", width=400)
+        left.pack(side=tk.LEFT, fill=tk.BOTH, padx=(0, 5))
+        
+        # Panel derecho - Gráficos
+        right = tk.Frame(content, bg="#0a0e27")
+        right.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        # Crear paneles
+        self.create_ml_summary_panel(left)
+        self.create_ml_recommendations_panel(left)
+        
+        if MATPLOTLIB_AVAILABLE:
+            self.create_ml_charts_panel(right)
+        else:
+            tk.Label(right, text="Matplotlib no disponible", bg="#0a0e27",
+                    fg="#ff006e", font=("Segoe UI", 12)).pack(pady=50)
+    
+    def create_ml_summary_panel(self, parent):
+        """Panel de resumen del ML"""
+        frame = tk.LabelFrame(parent, text="  RESUMEN DEL APRENDIZAJE  ", bg="#151b3d",
+                             fg="#4895ef", font=("Segoe UI", 11, "bold"),
+                             relief=tk.FLAT, borderwidth=2)
+        frame.pack(fill=tk.X, pady=5)
+        
+        self.ml_summary_text = scrolledtext.ScrolledText(
+            frame, height=12, bg="#1e2749", fg="#e0e6ff",
+            font=("Consolas", 9), relief=tk.FLAT, wrap=tk.WORD
+        )
+        self.ml_summary_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+    
+    def create_ml_recommendations_panel(self, parent):
+        """Panel de recomendaciones"""
+        frame = tk.LabelFrame(parent, text="  RECOMENDACIONES  ", bg="#151b3d",
+                             fg="#4895ef", font=("Segoe UI", 11, "bold"),
+                             relief=tk.FLAT, borderwidth=2)
+        frame.pack(fill=tk.BOTH, expand=True, pady=5)
+        
+        self.ml_recs_text = scrolledtext.ScrolledText(
+            frame, height=15, bg="#1e2749", fg="#e0e6ff",
+            font=("Segoe UI", 9), relief=tk.FLAT, wrap=tk.WORD
+        )
+        self.ml_recs_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+    
+    def create_ml_charts_panel(self, parent):
+        """Panel de gráficos de ML"""
+        frame = tk.LabelFrame(parent, text="  VISUALIZACIONES  ", bg="#151b3d",
+                             fg="#4895ef", font=("Segoe UI", 11, "bold"),
+                             relief=tk.FLAT, borderwidth=2)
+        frame.pack(fill=tk.BOTH, expand=True, pady=5)
+        
+        # Crear figura
+        self.ml_fig = Figure(figsize=(8, 6), facecolor='#151b3d')
+        self.ml_canvas = FigureCanvasTkAgg(self.ml_fig, master=frame)
+        self.ml_canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+    
+    def run_ml_analysis(self):
+        """Ejecutar análisis de ML"""
+        self.ml_summary_text.delete(1.0, tk.END)
+        self.ml_recs_text.delete(1.0, tk.END)
+        
+        self.ml_summary_text.insert(tk.END, "🔄 Analizando datos de aprendizaje...\n\n")
+        self.root.update()
+        
+        try:
+            analyzer = MLAnalyzer()
+            
+            if not analyzer.load_data():
+                self.ml_summary_text.insert(tk.END, "⚠️ No hay suficientes datos para analizar.\n")
+                self.ml_summary_text.insert(tk.END, "Necesitas al menos 10 trades.\n")
+                return
+            
+            # Realizar análisis
+            analysis = analyzer.analyze()
+            summary = analyzer.get_summary()
+            
+            # Mostrar resumen
+            self.ml_summary_text.delete(1.0, tk.END)
+            self.ml_summary_text.insert(tk.END, "═══════════════════════════════════════\n", "header")
+            self.ml_summary_text.insert(tk.END, "  RESUMEN DEL ANALISIS\n", "header")
+            self.ml_summary_text.insert(tk.END, "═══════════════════════════════════════\n\n", "header")
+            
+            self.ml_summary_text.insert(tk.END, f"Total Trades Analizados: {summary['total_trades']}\n")
+            self.ml_summary_text.insert(tk.END, f"Estrategias Activas: {summary['total_setups']}\n")
+            self.ml_summary_text.insert(tk.END, f"Señales Procesadas: {summary['processed_signals']}\n\n")
+            
+            self.ml_summary_text.insert(tk.END, "───────────────────────────────────────\n")
+            self.ml_summary_text.insert(tk.END, f"Mejor Estrategia: {summary['best_setup'] or 'N/A'}\n", "success")
+            self.ml_summary_text.insert(tk.END, f"Win Rate: {summary['best_setup_wr']:.1f}%\n", "success")
+            self.ml_summary_text.insert(tk.END, "───────────────────────────────────────\n\n")
+            
+            trend_text = {
+                "improving": "📈 Mejorando",
+                "stable": "➡️ Estable",
+                "declining": "📉 Declinando",
+                "insufficient_data": "⏳ Datos insuficientes"
+            }
+            
+            self.ml_summary_text.insert(tk.END, f"Tendencia de Aprendizaje:\n")
+            self.ml_summary_text.insert(tk.END, f"  {trend_text.get(summary['learning_trend'], summary['learning_trend'])}\n\n")
+            
+            # Feature importance
+            features = analysis.get("feature_importance")
+            if features:
+                self.ml_summary_text.insert(tk.END, "Importancia de Features:\n")
+                for feature in features['ranked'][:3]:
+                    self.ml_summary_text.insert(tk.END, 
+                        f"  {feature['name']}: {feature['importance']:.3f}\n")
+            
+            # Configurar tags
+            self.ml_summary_text.tag_config("header", foreground="#4895ef", font=("Segoe UI", 10, "bold"))
+            self.ml_summary_text.tag_config("success", foreground="#06ffa5", font=("Segoe UI", 10, "bold"))
+            
+            # Mostrar recomendaciones
+            recs = analysis.get("recommendations", [])
+            self.ml_recs_text.delete(1.0, tk.END)
+            
+            if recs:
+                for rec in recs:
+                    icon = {"success": "✅", "warning": "⚠️", "critical": "🔴", "info": "ℹ️"}.get(rec['type'], "•")
+                    self.ml_recs_text.insert(tk.END, f"{icon} ", rec['type'])
+                    self.ml_recs_text.insert(tk.END, f"{rec['message']}\n\n")
+                
+                # Tags de colores
+                self.ml_recs_text.tag_config("success", foreground="#06ffa5")
+                self.ml_recs_text.tag_config("warning", foreground="#ffbe0b")
+                self.ml_recs_text.tag_config("critical", foreground="#ff006e")
+                self.ml_recs_text.tag_config("info", foreground="#4895ef")
+            else:
+                self.ml_recs_text.insert(tk.END, "No hay recomendaciones en este momento.")
+            
+            # Actualizar gráficos
+            if MATPLOTLIB_AVAILABLE:
+                self.update_ml_charts(analysis)
+            
+        except Exception as e:
+            self.ml_summary_text.insert(tk.END, f"❌ Error en análisis: {e}\n")
+            import traceback
+            traceback.print_exc()
+    
+    def update_ml_charts(self, analysis):
+        """Actualizar gráficos de ML"""
+        self.ml_fig.clear()
+        
+        # Gráfico 1: Learning Progress
+        ax1 = self.ml_fig.add_subplot(221, facecolor='#1e2749')
+        
+        progress = analysis.get("learning_progress")
+        if progress and progress.get("windows"):
+            windows = progress["windows"]
+            x = [w["window_num"] for w in windows]
+            y = [w["win_rate"] for w in windows]
+            
+            ax1.plot(x, y, color='#4895ef', linewidth=2, marker='o')
+            ax1.axhline(y=50, color='#ffbe0b', linestyle='--', alpha=0.5, label='50% WR')
+            ax1.set_title('Progreso de Aprendizaje', color='#e0e6ff', fontsize=10)
+            ax1.set_xlabel('Ventana', color='#8b9dc3', fontsize=8)
+            ax1.set_ylabel('Win Rate %', color='#8b9dc3', fontsize=8)
+            ax1.tick_params(colors='#8b9dc3')
+            ax1.grid(True, alpha=0.2, color='#4895ef')
+            ax1.legend(facecolor='#1e2749', edgecolor='#4895ef', fontsize=8)
+        
+        # Gráfico 2: Feature Importance
+        ax2 = self.ml_fig.add_subplot(222, facecolor='#1e2749')
+        
+        features = analysis.get("feature_importance")
+        if features:
+            ranked = features['ranked'][:4]  # Top 4
+            names = [f['name'] for f in ranked]
+            importance = [f['importance'] for f in ranked]
+            
+            colors = ['#06ffa5', '#4895ef', '#ffbe0b', '#ff006e'][:len(names)]
+            ax2.barh(names, importance, color=colors, alpha=0.7)
+            ax2.set_title('Importancia de Features', color='#e0e6ff', fontsize=10)
+            ax2.set_xlabel('Importancia', color='#8b9dc3', fontsize=8)
+            ax2.tick_params(colors='#8b9dc3')
+            ax2.grid(True, alpha=0.2, color='#4895ef', axis='x')
+        
+        # Gráfico 3: Setup Evolution
+        ax3 = self.ml_fig.add_subplot(223, facecolor='#1e2749')
+        
+        setup_evo = analysis.get("setup_evolution", {})
+        if setup_evo:
+            for setup_name, windows in list(setup_evo.items())[:3]:  # Top 3 setups
+                if len(windows) > 1:
+                    x = [w['window'] for w in windows]
+                    y = [w['win_rate'] for w in windows]
+                    ax3.plot(x, y, marker='o', label=setup_name[:15], linewidth=2)
+            
+            ax3.axhline(y=50, color='#ffbe0b', linestyle='--', alpha=0.3)
+            ax3.set_title('Evolución de Setups', color='#e0e6ff', fontsize=10)
+            ax3.set_xlabel('Ventana', color='#8b9dc3', fontsize=8)
+            ax3.set_ylabel('Win Rate %', color='#8b9dc3', fontsize=8)
+            ax3.tick_params(colors='#8b9dc3')
+            ax3.legend(facecolor='#1e2749', edgecolor='#4895ef', fontsize=7)
+            ax3.grid(True, alpha=0.2, color='#4895ef')
+        
+        # Gráfico 4: Confusion Matrix (simplificado)
+        ax4 = self.ml_fig.add_subplot(224, facecolor='#1e2749')
+        
+        accuracy = analysis.get("prediction_accuracy")
+        if accuracy:
+            cm = accuracy['confusion_matrix']
+            
+            categories = ['High Conf\nWin', 'High Conf\nLoss', 'Low Conf\nWin', 'Low Conf\nLoss']
+            values = [cm['high_conf_wins'], cm['high_conf_losses'], 
+                     cm['low_conf_wins'], cm['low_conf_losses']]
+            colors_cm = ['#06ffa5', '#ff006e', '#4895ef', '#ffbe0b']
+            
+            ax4.bar(range(len(values)), values, color=colors_cm, alpha=0.7)
+            ax4.set_xticks(range(len(categories)))
+            ax4.set_xticklabels(categories, rotation=0, ha='center', fontsize=7)
+            ax4.set_title('Matriz de Predicciones', color='#e0e6ff', fontsize=10)
+            ax4.set_ylabel('Cantidad', color='#8b9dc3', fontsize=8)
+            ax4.tick_params(colors='#8b9dc3')
+            ax4.grid(True, alpha=0.2, color='#4895ef', axis='y')
+        
+        self.ml_fig.tight_layout()
+        self.ml_canvas.draw()
+    
+    # ==================== PESTAÑA 7: BACKTESTING ====================
     
     def update_all_displays(self):
         """Actualizar todos los displays"""
