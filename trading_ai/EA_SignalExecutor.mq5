@@ -1,21 +1,23 @@
 //+------------------------------------------------------------------+
-//| Signal Executor EA - Solo opera con señales RECIENTES          |
+//| EA_SignalExecutor.mq5 - CORREGIDO                                |
+//| Se guía por bot_status.json, NO por edad de signal.json          |
 //+------------------------------------------------------------------+
 #property strict
-#property tester_file "signals\\signal.json"
 
 #include <Trade/Trade.mqh>
-#include <Files\FileTxt.mqh>
 
 CTrade trade;
 
 //================ CONFIG =================//
-input string Signal_File   = "signals\\signal.json";
+input string Bot_Status_File = "bot_status.json";
+input string Signal_File = "signals\\signal.json";
 input string Feedback_File = "trade_feedback.json";
-input double Min_Confidence = 0.70;
-
 input string Market_Data_File = "market_data.json";
+
+input double Min_Confidence = 0.30;
 input int    Data_Write_Interval = 10;
+
+// Indicadores
 input int    RSI_Period = 14;
 input int    MACD_Fast = 12;
 input int    MACD_Slow = 26;
@@ -27,9 +29,6 @@ input int    BB_Period = 20;
 input double BB_Deviation = 2.0;
 input int    ATR_Period = 14;
 
-// CRÍTICO: Máximo tiempo para considerar una señal válida
-input int Max_Signal_Age_Seconds = 180; // 3 minutos
-
 //================ STRUCT =================//
 struct Signal
 {
@@ -38,24 +37,54 @@ struct Signal
    double confidence;
    double sl_pips;
    double tp_pips;
-   datetime file_modified_time;  // NUEVO
 };
 
 //================ GLOBAL =================//
-string last_signal_id   = "";
+string last_signal_id = "";
 string active_signal_id = "";
-string active_action    = "";
+string active_action = "";
 
 datetime last_data_write_time = 0;
+datetime last_bot_status_check = 0;
+
 int handle_rsi, handle_macd, handle_ema_fast, handle_ema_slow, handle_ema_long;
 int handle_bb, handle_atr;
 
 double pip_value;
 long stops_level;
 
-// NUEVO: Para tracking de señales
-datetime last_signal_check_time = 0;
-bool signal_file_verified = false;
+//================ BOT STATUS CHECK =================//
+bool IsBotRunning()
+{
+   // Verificar cada 5 segundos
+   datetime current_time = TimeCurrent();
+   if(current_time - last_bot_status_check < 5)
+      return true;  // Asumir que sigue corriendo
+   
+   last_bot_status_check = current_time;
+   
+   int handle = FileOpen(Bot_Status_File, FILE_READ | FILE_TXT | FILE_ANSI);
+   if(handle == INVALID_HANDLE)
+   {
+      Print("⚠️ BOT STATUS NO DETECTADO");
+      return false;
+   }
+   
+   string content = "";
+   while(!FileIsEnding(handle))
+      content += FileReadString(handle);
+   FileClose(handle);
+   
+   // Verificar si "running": true
+   if(StringFind(content, "\"running\": true") < 0)
+   {
+      Print("🛑 BOT EN STOP (running=false)");
+      return false;
+   }
+   
+   Print("✅ BOT CORRIENDO (running=true)");
+   return true;
+}
 
 //================ JSON HELPER =================//
 string GetJSONValue(string json, string key)
@@ -84,46 +113,9 @@ string GetJSONValue(string json, string key)
    return value;
 }
 
-//================ CHECK SIGNAL FILE AGE =================//
-bool IsSignalFileRecent()
-{
-   // Obtener tiempo de última modificación del archivo
-   datetime file_time = (datetime)FileGetInteger(Signal_File, FILE_MODIFY_DATE, false);
-   
-   if(file_time == 0)
-   {
-      // Archivo no existe o no se puede leer
-      return false;
-   }
-   
-   datetime current_time = TimeCurrent();
-   int age_seconds = (int)(current_time - file_time);
-   
-   // CRÍTICO: Solo aceptar señales de menos de 3 minutos
-   if(age_seconds > Max_Signal_Age_Seconds)
-   {
-      if(!signal_file_verified)
-      {
-         Print("⚠️ SEÑAL DEMASIADO ANTIGUA");
-         Print("   Edad: ", age_seconds, " segundos (máx: ", Max_Signal_Age_Seconds, ")");
-         Print("   Esperando señal fresca del bot Python...");
-         signal_file_verified = true;
-      }
-      return false;
-   }
-   
-   return true;
-}
-
 //================ READ SIGNAL =================//
 bool ReadSignal(Signal &sig)
 {
-   // NUEVO: Verificar edad del archivo ANTES de leerlo
-   if(!IsSignalFileRecent())
-   {
-      return false;
-   }
-   
    int handle = FileOpen(Signal_File, FILE_READ | FILE_TXT | FILE_ANSI);
    if(handle == INVALID_HANDLE)
    {
@@ -148,33 +140,37 @@ bool ReadSignal(Signal &sig)
    sig.sl_pips    = StringToDouble(GetJSONValue(content, "sl_pips"));
    sig.tp_pips    = StringToDouble(GetJSONValue(content, "tp_pips"));
 
-   // Verificar si es señal de STOP
+   // Verificar señal STOP
    if(StringFind(sig.signal_id, "_STOP") >= 0)
    {
-      Print("🛑 SEÑAL DE STOP DETECTADA - Bot Python detenido");
+      Print("🛑 SEÑAL STOP");
       sig.action = "NONE";
       return false;
    }
    
-   // Verificar que no sea la misma señal
+   // Verificar señal NONE
+   if(StringFind(sig.signal_id, "_NONE") >= 0)
+   {
+      return false;
+   }
+   
+   // Verificar si ya procesada
    if(sig.signal_id == "" || sig.signal_id == last_signal_id)
       return false;
 
-   // Verificar confianza mínima
+   // Verificar confidence
    if(sig.confidence < Min_Confidence)
    {
-      Print("⚠️ Señal rechazada - Confianza muy baja: ", sig.confidence);
+      Print("⚠️ Confianza baja: ", sig.confidence);
       return false;
    }
 
-   // NUEVO: Log de señal aceptada
-   Print("✅ SEÑAL FRESCA DETECTADA");
-   Print("   Signal ID: ", sig.signal_id);
+   Print("✅ SEÑAL VÁLIDA");
+   Print("   ID: ", sig.signal_id);
    Print("   Action: ", sig.action);
    Print("   Confidence: ", sig.confidence);
    
    last_signal_id = sig.signal_id;
-   signal_file_verified = false; // Reset para próxima verificación
    
    return true;
 }
@@ -182,13 +178,10 @@ bool ReadSignal(Signal &sig)
 //================ WRITE FEEDBACK =================//
 void WriteTradeFeedback(string result, double pips)
 {
-   // NUEVO: Crear directorio si no existe
-   string dir_path = "feedback_history";
-   
    int handle = FileOpen(Feedback_File, FILE_WRITE | FILE_TXT | FILE_ANSI);
    if(handle == INVALID_HANDLE)
    {
-      Print("❌ No se pudo escribir trade_feedback.json");
+      Print("❌ No se pudo escribir feedback");
       return;
    }
 
@@ -203,73 +196,7 @@ void WriteTradeFeedback(string result, double pips)
    FileWriteString(handle, json);
    FileClose(handle);
 
-   Print("📊 FEEDBACK GUARDADO → ", result, " | Pips: ", pips);
-   
-   // NUEVO: También guardar en historial persistente
-   WriteToHistory(result, pips);
-}
-
-//================ WRITE TO HISTORY =================//
-void WriteToHistory(string result, double pips)
-{
-   // Crear archivo de historial diario
-   string date_str = TimeToString(TimeCurrent(), TIME_DATE);
-   StringReplace(date_str, ".", "");
-   string history_file = "history_" + date_str + ".csv";
-   
-   // Verificar si el archivo ya existe
-   bool file_exists = false;
-   int check_handle = FileOpen(history_file, FILE_READ | FILE_CSV | FILE_ANSI);
-   if(check_handle != INVALID_HANDLE)
-   {
-      file_exists = true;
-      FileClose(check_handle);
-   }
-   
-   // Abrir en modo append
-   int handle = FileOpen(history_file, FILE_WRITE | FILE_READ | FILE_CSV | FILE_ANSI);
-   if(handle == INVALID_HANDLE)
-   {
-      Print("⚠️ No se pudo escribir historial");
-      return;
-   }
-   
-   // Si el archivo es nuevo, escribir header
-   if(!file_exists || FileSize(handle) == 0)
-   {
-      FileSeek(handle, 0, SEEK_END);
-      FileWrite(handle, "Timestamp,SignalID,Result,Pips,Setup");
-   }
-   
-   // Escribir registro
-   FileSeek(handle, 0, SEEK_END);
-   
-   // Extraer setup del signal_id
-   string setup = "UNKNOWN";
-   string sig_id = active_signal_id;
-   int pos = StringFind(sig_id, "_");
-   if(pos >= 0)
-   {
-      pos = StringFind(sig_id, "_", pos + 1);
-      if(pos >= 0)
-      {
-         pos = StringFind(sig_id, "_", pos + 1);
-         if(pos >= 0)
-         {
-            setup = StringSubstr(sig_id, pos + 1);
-         }
-      }
-   }
-   
-   FileWrite(handle, 
-      TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS),
-      sig_id,
-      result,
-      DoubleToString(pips, 2),
-      setup
-   );
-   
-   FileClose(handle);
+   Print("📊 FEEDBACK: ", result, " | Pips: ", pips);
 }
 
 //================ ON TRADE TRANSACTION =================//
@@ -299,69 +226,7 @@ void OnTradeTransaction(
    active_signal_id = "";
    active_action = "";
    
-   Print("🔔 TRADE CERRADO → ", res, " | Pips: ", pips);
-}
-
-//================ DETECT TREND =================//
-string DetectTrend(double ema_fast, double ema_slow, double ema_long, double current_price)
-{
-   if(ema_fast > ema_slow && ema_slow > ema_long && current_price > ema_fast)
-      return "STRONG_UP";
-   
-   if(ema_fast > ema_slow && current_price > ema_fast)
-      return "UP";
-   
-   if(ema_fast < ema_slow && ema_slow < ema_long && current_price < ema_fast)
-      return "STRONG_DOWN";
-   
-   if(ema_fast < ema_slow && current_price < ema_fast)
-      return "DOWN";
-   
-   return "SIDEWAYS";
-}
-
-//================ DETECT VOLATILITY =================//
-string DetectVolatility(double atr, double atr_avg)
-{
-   if(atr > atr_avg * 1.5)
-      return "HIGH";
-   else if(atr < atr_avg * 0.5)
-      return "LOW";
-   else
-      return "NORMAL";
-}
-
-//================ GET CANDLES DATA =================//
-string GetCandlesJSON(int count)
-{
-   MqlRates rates[];
-   ArraySetAsSeries(rates, true);
-   
-   int copied = CopyRates(_Symbol, PERIOD_CURRENT, 0, count, rates);
-   if(copied <= 0)
-      return "[]";
-   
-   string json = "[\n";
-   
-   for(int i = 0; i < copied; i++)
-   {
-      json += "    {\n";
-      json += "      \"time\": \"" + TimeToString(rates[i].time, TIME_DATE|TIME_SECONDS) + "\",\n";
-      json += "      \"open\": " + DoubleToString(rates[i].open, _Digits) + ",\n";
-      json += "      \"high\": " + DoubleToString(rates[i].high, _Digits) + ",\n";
-      json += "      \"low\": " + DoubleToString(rates[i].low, _Digits) + ",\n";
-      json += "      \"close\": " + DoubleToString(rates[i].close, _Digits) + ",\n";
-      json += "      \"volume\": " + IntegerToString(rates[i].tick_volume) + "\n";
-      json += "    }";
-      
-      if(i < copied - 1)
-         json += ",\n";
-      else
-         json += "\n";
-   }
-   
-   json += "  ]";
-   return json;
+   Print("🔔 TRADE CERRADO: ", res, " | ", pips, " pips");
 }
 
 //================ WRITE MARKET DATA =================//
@@ -369,7 +234,6 @@ void WriteMarketData()
 {
    double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
    double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-   double spread = (ask - bid) / _Point;
    
    double rsi_buffer[], macd_main[], macd_signal[], ema_fast_buffer[], ema_slow_buffer[], ema_long_buffer[];
    double bb_upper[], bb_middle[], bb_lower[], atr_buffer[];
@@ -396,6 +260,18 @@ void WriteMarketData()
    if(CopyBuffer(handle_bb, 2, 0, 1, bb_lower) <= 0) return;
    if(CopyBuffer(handle_atr, 0, 0, 1, atr_buffer) <= 0) return;
    
+   // Trend detection
+   string trend = "SIDEWAYS";
+   if(ema_fast_buffer[0] > ema_slow_buffer[0] && ema_slow_buffer[0] > ema_long_buffer[0])
+      trend = "STRONG_UP";
+   else if(ema_fast_buffer[0] > ema_slow_buffer[0])
+      trend = "UP";
+   else if(ema_fast_buffer[0] < ema_slow_buffer[0] && ema_slow_buffer[0] < ema_long_buffer[0])
+      trend = "STRONG_DOWN";
+   else if(ema_fast_buffer[0] < ema_slow_buffer[0])
+      trend = "DOWN";
+   
+   // Volatility
    double atr_array[20];
    ArraySetAsSeries(atr_array, true);
    CopyBuffer(handle_atr, 0, 0, 20, atr_array);
@@ -404,54 +280,42 @@ void WriteMarketData()
       atr_avg += atr_array[i];
    atr_avg /= 20;
    
-   string trend = DetectTrend(ema_fast_buffer[0], ema_slow_buffer[0], ema_long_buffer[0], bid);
-   string volatility = DetectVolatility(atr_buffer[0], atr_avg);
-   string candles = GetCandlesJSON(20);
+   string volatility = "NORMAL";
+   if(atr_buffer[0] > atr_avg * 1.5)
+      volatility = "HIGH";
+   else if(atr_buffer[0] < atr_avg * 0.5)
+      volatility = "LOW";
    
+   // JSON
    string json = "{\n";
    json += "  \"symbol\": \"" + _Symbol + "\",\n";
-   json += "  \"timeframe\": \"" + EnumToString(PERIOD_CURRENT) + "\",\n";
    json += "  \"timestamp\": \"" + TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS) + "\",\n";
    json += "  \"bid\": " + DoubleToString(bid, _Digits) + ",\n";
    json += "  \"ask\": " + DoubleToString(ask, _Digits) + ",\n";
-   json += "  \"spread\": " + DoubleToString(spread, 1) + ",\n";
    json += "  \"indicators\": {\n";
    json += "    \"rsi\": " + DoubleToString(rsi_buffer[0], 2) + ",\n";
    json += "    \"macd\": {\n";
    json += "      \"main\": " + DoubleToString(macd_main[0], _Digits) + ",\n";
-   json += "      \"signal\": " + DoubleToString(macd_signal[0], _Digits) + ",\n";
-   json += "      \"histogram\": " + DoubleToString(macd_main[0] - macd_signal[0], _Digits) + "\n";
-   json += "    },\n";
-   json += "    \"ema\": {\n";
-   json += "      \"fast\": " + DoubleToString(ema_fast_buffer[0], _Digits) + ",\n";
-   json += "      \"slow\": " + DoubleToString(ema_slow_buffer[0], _Digits) + ",\n";
-   json += "      \"long\": " + DoubleToString(ema_long_buffer[0], _Digits) + "\n";
+   json += "      \"signal\": " + DoubleToString(macd_signal[0], _Digits) + "\n";
    json += "    },\n";
    json += "    \"bollinger\": {\n";
    json += "      \"upper\": " + DoubleToString(bb_upper[0], _Digits) + ",\n";
    json += "      \"middle\": " + DoubleToString(bb_middle[0], _Digits) + ",\n";
    json += "      \"lower\": " + DoubleToString(bb_lower[0], _Digits) + "\n";
-   json += "    },\n";
-   json += "    \"atr\": " + DoubleToString(atr_buffer[0], _Digits) + "\n";
+   json += "    }\n";
    json += "  },\n";
    json += "  \"analysis\": {\n";
    json += "    \"trend\": \"" + trend + "\",\n";
-   json += "    \"volatility\": \"" + volatility + "\",\n";
-   json += "    \"rsi_signal\": \"" + (rsi_buffer[0] > 70 ? "OVERBOUGHT" : rsi_buffer[0] < 30 ? "OVERSOLD" : "NEUTRAL") + "\",\n";
-   json += "    \"macd_signal\": \"" + (macd_main[0] > macd_signal[0] ? "BULLISH" : "BEARISH") + "\"\n";
-   json += "  },\n";
-   json += "  \"candles\": " + candles + "\n";
+   json += "    \"volatility\": \"" + volatility + "\"\n";
+   json += "  }\n";
    json += "}\n";
    
    int handle = FileOpen(Market_Data_File, FILE_WRITE | FILE_TXT | FILE_ANSI);
-   if(handle == INVALID_HANDLE)
+   if(handle != INVALID_HANDLE)
    {
-      Print("❌ No se pudo escribir market_data.json");
-      return;
+      FileWriteString(handle, json);
+      FileClose(handle);
    }
-   
-   FileWriteString(handle, json);
-   FileClose(handle);
 }
 
 //================ INIT INDICATORS =================//
@@ -474,61 +338,14 @@ bool InitIndicators()
       return false;
    }
    
-   Print("✅ Indicadores inicializados");
+   Print("✅ Indicadores OK");
    return true;
-}
-
-//================ CALCULATE PIP VALUE =================//
-void CalculatePipValue()
-{
-   int digits = (int)SymbolInfoInteger(_Symbol, SYMBOL_DIGITS);
-   
-   if(digits == 5 || digits == 3)
-      pip_value = 10 * _Point;
-   else
-      pip_value = _Point;
-   
-   stops_level = SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL);
-   
-   Print("📐 Pip Value: ", pip_value);
-   Print("📐 Stops Level: ", stops_level, " points");
-}
-
-//================ ADJUST STOPS =================//
-void AdjustStops(double &sl, double &tp, string action, double entry_price)
-{
-   double min_distance = stops_level * _Point;
-   
-   if(stops_level > 0)
-   {
-      if(action == "BUY")
-      {
-         double sl_distance = entry_price - sl;
-         double tp_distance = tp - entry_price;
-         
-         if(sl_distance < min_distance)
-            sl = entry_price - min_distance;
-         
-         if(tp_distance < min_distance)
-            tp = entry_price + min_distance;
-      }
-      else if(action == "SELL")
-      {
-         double sl_distance = sl - entry_price;
-         double tp_distance = entry_price - tp;
-         
-         if(sl_distance < min_distance)
-            sl = entry_price + min_distance;
-         
-         if(tp_distance < min_distance)
-            tp = entry_price - min_distance;
-      }
-   }
 }
 
 //================ ON TICK =================//
 void OnTick()
 {
+   // Escribir market data periódicamente
    datetime current_time = TimeCurrent();
    if(current_time - last_data_write_time >= Data_Write_Interval)
    {
@@ -536,15 +353,40 @@ void OnTick()
       last_data_write_time = current_time;
    }
    
+   // VERIFICAR BOT STATUS
+   if(!IsBotRunning())
+   {
+      static bool logged = false;
+      if(!logged)
+      {
+         Print("⏸️ EA EN ESPERA - Bot Python detenido");
+         logged = true;
+      }
+      return;
+   }
+   static bool logged = false;
+   logged = false;
+   
+   // No operar si hay posiciones
    if(PositionsTotal() > 0)
       return;
 
+   // Leer señal
    Signal sig;
    if(!ReadSignal(sig))
       return;
    
    if(sig.action == "NONE")
       return;
+
+   // Calcular pip value
+   int digits = (int)SymbolInfoInteger(_Symbol, SYMBOL_DIGITS);
+   if(digits == 5 || digits == 3)
+      pip_value = 10 * _Point;
+   else
+      pip_value = _Point;
+   
+   stops_level = SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL);
 
    double lot = 0.01;
    double entry_price, sl_price, tp_price;
@@ -555,7 +397,15 @@ void OnTick()
       sl_price = entry_price - (sig.sl_pips * pip_value);
       tp_price = entry_price + (sig.tp_pips * pip_value);
       
-      AdjustStops(sl_price, tp_price, "BUY", entry_price);
+      // Ajustar stops si es necesario
+      double min_distance = stops_level * _Point;
+      if(stops_level > 0)
+      {
+         if((entry_price - sl_price) < min_distance)
+            sl_price = entry_price - min_distance;
+         if((tp_price - entry_price) < min_distance)
+            tp_price = entry_price + min_distance;
+      }
       
       Print("📈 BUY @ ", DoubleToString(entry_price, _Digits));
       Print("   SL: ", DoubleToString(sl_price, _Digits));
@@ -580,7 +430,15 @@ void OnTick()
       sl_price = entry_price + (sig.sl_pips * pip_value);
       tp_price = entry_price - (sig.tp_pips * pip_value);
       
-      AdjustStops(sl_price, tp_price, "SELL", entry_price);
+      // Ajustar stops
+      double min_distance = stops_level * _Point;
+      if(stops_level > 0)
+      {
+         if((sl_price - entry_price) < min_distance)
+            sl_price = entry_price + min_distance;
+         if((entry_price - tp_price) < min_distance)
+            tp_price = entry_price - min_distance;
+      }
       
       Print("📉 SELL @ ", DoubleToString(entry_price, _Digits));
       Print("   SL: ", DoubleToString(sl_price, _Digits));
@@ -605,15 +463,13 @@ void OnTick()
 int OnInit()
 {
    Print("========================================");
-   Print("EA SignalExecutor INICIADO");
-   Print("⏰ Solo aceptará señales de < ", Max_Signal_Age_Seconds, " segundos");
+   Print("EA SignalExecutor v5.0 - FIXED");
+   Print("Se guía por bot_status.json");
    Print("========================================");
-   
-   CalculatePipValue();
    
    if(!InitIndicators())
    {
-      Print("❌ Fallo al inicializar indicadores");
+      Print("❌ Fallo al inicializar");
       return INIT_FAILED;
    }
    
