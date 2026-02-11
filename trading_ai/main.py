@@ -1,72 +1,217 @@
+#!/usr/bin/env python3
+"""
+main.py v4.0 - BOT CON MACHINE LEARNING REAL
+
+Sistema completo con:
+- Aprendizaje automático
+- 8+ estrategias
+- Ajuste dinámico de parámetros
+- Selección inteligente de estrategia
+"""
+
 import time
 import os
-from datetime import datetime
-
-from decision_engine.context_analyzer import analyze_market_context
-from decision_engine.setup_selector import select_setup
-from decision_engine.signal_router import evaluate_signal
-from data_providers.mt5_reader import read_market_data
-
-# NUEVO: Importar feedback processor
+import json
 import sys
+import logging
+from datetime import datetime
+from pathlib import Path
+
 sys.path.append(os.path.dirname(__file__))
 
+
+# ==============================
+# STATUS DEL BOT
+# ==============================
+BOT_STATUS_FILE = "/home/travieso/.wine/drive_c/Program Files/MetaTrader 5/MQL5/Files/bot_status.json"
+
+def write_bot_status(running: bool):
+        data = {
+            "running": running,
+            "timestamp": int(time.time())
+        }
+        os.makedirs(os.path.dirname(BOT_STATUS_FILE), exist_ok=True)
+        with open(BOT_STATUS_FILE, "w") as f:
+            json.dump(data, f)
+            f.flush()
+            os.fsync(f.fileno())
+        os.utime(BOT_STATUS_FILE, None)
+
+
+# ==============================
+# DEBUG JSON
+# ==============================
+DEBUG_FILE = Path(__file__).parent / "logs" / "debug.json"
+
+def write_debug(level, message):
+    entry = {
+        "timestamp": datetime.now().isoformat(),
+        "level": level,
+        "message": message
+    }
+
+    DEBUG_FILE.parent.mkdir(exist_ok=True)
+
+    if DEBUG_FILE.exists():
+        try:
+            with open(DEBUG_FILE, "r") as f:
+                data = json.load(f)
+                if not isinstance(data, list):
+                    data = []
+        except:
+            data = []
+    else:
+        data = []
+
+    data.append(entry)
+
+    with open(DEBUG_FILE, "w") as f:
+        json.dump(data, f, indent=2)
+
+
+# ==============================
+# LOGGING
+# ==============================
+def setup_logging():
+    log_dir = Path(__file__).parent / "logs"
+    log_dir.mkdir(exist_ok=True)
+    log_file = log_dir / f"bot_{datetime.now().strftime('%Y%m%d')}.log"
+    
+    formatter = logging.Formatter('[%(asctime)s] [%(levelname)s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S')
+    
+    file_handler = logging.FileHandler(log_file)
+    file_handler.setFormatter(formatter)
+    file_handler.setLevel(logging.DEBUG)
+    
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(formatter)
+    console_handler.setLevel(logging.INFO)
+    
+    logger = logging.getLogger()
+    logger.setLevel(logging.DEBUG)
+    logger.addHandler(file_handler)
+    logger.addHandler(console_handler)
+    
+    return logger
+
+logger = setup_logging()
+
+
+# ==============================
+# IMPORTS DEL BOT
+# ==============================
+try:
+    from decision_engine.context_analyzer import analyze_market_context
+    from decision_engine.signal_router import evaluate_signal
+    from data_providers.mt5_reader import read_market_data
+    logger.info("✅ Módulos principales cargados")
+    write_debug("INFO", "Módulos principales cargados")
+except Exception as e:
+    logger.error(f"❌ Error cargando módulos: {e}")
+    write_debug("ERROR", f"Error cargando módulos: {e}")
+    sys.exit(1)
+
+
+# Selector inteligente
+try:
+    from decision_engine.intelligent_selector import select_intelligent_strategy as select_setup
+    logger.info("✅ Selector inteligente cargado")
+    write_debug("INFO", "Selector inteligente cargado")
+except:
+    logger.warning("⚠️ Usando selector básico")
+    write_debug("WARN", "Usando selector básico")
+    from decision_engine.setup_selector import select_setup
+
+
+# Sistema ML
+try:
+    from ml_adaptive_system import ml_auto_adjust, get_ml_status
+    ML_AVAILABLE = True
+    logger.info("✅ Sistema ML disponible")
+    write_debug("INFO", "Sistema ML disponible")
+except:
+    ML_AVAILABLE = False
+    logger.warning("⚠️ Sistema ML no disponible")
+    write_debug("WARN", "Sistema ML no disponible")
+    def ml_auto_adjust():
+        return False
+    def get_ml_status():
+        return {"mode": "DISABLED"}
+
+
+# Feedback
 try:
     from feedback.feedback_processor import process_feedback, get_overall_stats
-except:
-    # Si no existe el módulo, crear funciones dummy
+    logger.info("✅ Módulo de feedback cargado")
+    write_debug("INFO", "Módulo de feedback cargado")
+except Exception as e:
+    logger.warning(f"⚠️ Feedback no disponible: {e}")
+    write_debug("WARN", f"Feedback no disponible: {e}")
     def process_feedback():
         return False
     def get_overall_stats():
         return {"total_trades": 0, "total_wins": 0, "total_losses": 0, "win_rate": 0, "total_pips": 0}
 
-RUNNING = False
 
 # ==============================
 # CONFIG
 # ==============================
-LOOP_INTERVAL_SECONDS = 10
-RUNNING = True
+def load_config():
+    config_file = "bot_config.json"
+    
+    if os.path.exists(config_file):
+        try:
+            with open(config_file, 'r') as f:
+                config = json.load(f)
+            logger.info(f"✅ Config cargada: min_conf={config.get('min_confidence')}%")
+            write_debug("INFO", "Config cargada correctamente")
+            return config
+        except Exception as e:
+            logger.warning(f"⚠️ Error leyendo config: {e}")
+            write_debug("ERROR", f"Error leyendo config: {e}")
+    
+    logger.info("📄 Usando config por defecto")
+    write_debug("INFO", "Usando configuración por defecto")
+    return {
+        "min_confidence": 35,
+        "cooldown": 5,
+        "max_daily_trades": 50,
+        "max_losses": 5,
+        "lot_size": 0.01,
+        "start_hour": "00:00",
+        "end_hour": "23:59"
+    }
 
-# RUTAS DE ARCHIVOS
-SIGNAL_FILE_PATH = "/home/travieso/.wine/drive_c/Program Files/MetaTrader 5/MQL5/Files/signals/signal.json"
 
-# PROTECCIONES
-MAX_DAILY_TRADES = 20
-COOLDOWN_SECONDS = 60
-MAX_CONSECUTIVE_LOSSES = 3
-PAUSE_AFTER_LOSSES_MINUTES = 30
-MIN_CONFIDENCE_THRESHOLD = 0.75
-
-# Variables de control
+# ==============================
+# GLOBALS
+# ==============================
+RUNNING = False
+CONFIG = {}
 last_trade_time = 0
 consecutive_losses = 0
 paused_until = 0
+cycle_count = 0
+
+SIGNAL_FILE_PATH = "/home/travieso/.wine/drive_c/Program Files/MetaTrader 5/MQL5/Files/signals/signal.json"
 
 
 def clear_signal_file():
-    """
-    Elimina el archivo signal.json para que el EA no opere con señales viejas
-    """
     if os.path.exists(SIGNAL_FILE_PATH):
         try:
             os.remove(SIGNAL_FILE_PATH)
-            print("🗑️ signal.json eliminado correctamente")
+            logger.info("🗑️ signal.json eliminado")
+            write_debug("INFO", "signal.json eliminado")
             return True
         except Exception as e:
-            print(f"❌ Error eliminando signal.json: {e}")
+            logger.error(f"❌ Error: {e}")
+            write_debug("ERROR", f"Error eliminando signal.json: {e}")
             return False
-    else:
-        print("ℹ️ signal.json no existe (ya estaba limpio)")
-        return True
+    return True
 
 
 def create_stop_signal():
-    """
-    Crea un signal.json con acción NONE para indicar al EA que no opere
-    """
     try:
-        # Crear directorio si no existe
         os.makedirs(os.path.dirname(SIGNAL_FILE_PATH), exist_ok=True)
         
         stop_signal = {
@@ -79,171 +224,168 @@ def create_stop_signal():
             "timeframe": "M5",
             "timestamp": datetime.now().isoformat(),
             "setup_name": "SYSTEM_STOP",
-            "reason": "Bot detenido por el usuario"
+            "reason": "Bot detenido"
         }
         
-        import json
         with open(SIGNAL_FILE_PATH, "w") as f:
             json.dump(stop_signal, f, indent=4)
         
-        print("🛑 Señal de STOP escrita para el EA")
+        logger.info("🛑 Señal STOP creada")
+        write_debug("INFO", "Señal STOP creada")
         return True
-        
     except Exception as e:
-        print(f"❌ Error creando señal de stop: {e}")
+        logger.error(f"❌ Error: {e}")
+        write_debug("ERROR", f"Error creando señal STOP: {e}")
         return False
 
 
-# ==============================
-# UN CICLO DE DECISIÓN
-# ==============================
 def run_cycle():
-    global last_trade_time, consecutive_losses, paused_until
+    global last_trade_time, consecutive_losses, paused_until, cycle_count
     
-    print("\n==============================")
-    print("🧠 Nuevo ciclo:", datetime.now())
-    print("==============================")
+    cycle_count += 1
+    
+    logger.info("=" * 60)
+    logger.info(f"🧠 Ciclo #{cycle_count}: {datetime.now()}")
+    logger.info("=" * 60)
+    write_debug("INFO", f"Ciclo #{cycle_count} iniciado")
 
-    # PROCESAR FEEDBACK DE TRADES CERRADOS
-    if process_feedback():
-        print("📊 Feedback procesado y estadísticas actualizadas")
-    
-    # VERIFICAR PROTECCIONES
-    current_time = time.time()
-    if paused_until > current_time:
-        remaining = int((paused_until - current_time) / 60)
-        print(f"⏸️ BOT EN PAUSA por pérdidas consecutivas (faltan {remaining} min)")
-        return
-    
-    # Verificar cooldown entre trades
-    if last_trade_time > 0:
-        time_since_last = current_time - last_trade_time
-        if time_since_last < COOLDOWN_SECONDS:
-            remaining = int(COOLDOWN_SECONDS - time_since_last)
-            print(f"⏳ Cooldown activo: esperando {remaining}s antes del próximo trade")
-            return
-    
-    # Verificar máximo de trades diarios
-    stats = get_overall_stats()
-    if stats["total_trades"] >= MAX_DAILY_TRADES:
-        print(f"🛑 LÍMITE DIARIO ALCANZADO: {stats['total_trades']} trades")
-        print("   El bot se reactivará mañana")
-        return
-    
-    # Mostrar estadísticas actuales
-    if stats["total_trades"] > 0:
-        print(f"📊 Stats del día: {stats['total_wins']}W / {stats['total_losses']}L | WR: {stats['win_rate']:.1f}% | Pips: {stats['total_pips']:.2f}")
+    # SISTEMA ML
+    if ML_AVAILABLE:
+        try:
+            if ml_auto_adjust():
+                global CONFIG
+                CONFIG = load_config()
+                write_debug("INFO", "ML ajustó configuración")
+        except Exception as e:
+            logger.debug(f"ML adjust: {e}")
+            write_debug("ERROR", f"ML adjust error: {e}")
 
-    # INPUT DE MERCADO
-    market_data = read_market_data()
+    # FEEDBACK
+    try:
+        if process_feedback():
+            logger.info("📊 Feedback procesado")
+            write_debug("INFO", "Feedback procesado")
+    except:
+        pass
+
+    # MERCADO
+    try:
+        market_data = read_market_data()
+    except Exception as e:
+        logger.error(f"❌ Error: {e}")
+        write_debug("ERROR", f"Error leyendo mercado: {e}")
+        return
     
     if not market_data:
-        print("⏩ No hay datos de mercado, ciclo omitido")
+        logger.warning("⏩ Sin datos")
+        write_debug("WARN", "Sin datos de mercado")
         return
 
     # CONTEXTO
-    context = analyze_market_context(market_data)
-    print("📊 CONTEXTO:", context)
-
-    # SELECCIÓN DE SETUP
-    setup = select_setup(context)
-
-    if not setup:
-        print("❌ NO SETUP → no se genera señal")
+    try:
+        context = analyze_market_context(market_data)
+        write_debug("INFO", f"Contexto: {context}")
+    except Exception as e:
+        logger.error(f"❌ Error: {e}")
+        write_debug("ERROR", f"Error analizando contexto: {e}")
         return
 
-    print("🧠 SETUP SELECCIONADO:", setup["name"], f"(score: {setup['score']:.2f})")
+    # SETUP
+    try:
+        setup = select_setup(context)
+        write_debug("INFO", f"Setup seleccionado: {setup}")
+    except Exception as e:
+        logger.error(f"❌ Error: {e}")
+        write_debug("ERROR", f"Error seleccionando setup: {e}")
+        return
 
-    # EVALUAR SEÑAL
-    signal = evaluate_signal(setup["name"], context, market_data)
+    if not setup:
+        logger.info("❌ NO SETUP")
+        write_debug("WARN", "No se encontró setup")
+        return
+
+    # SEÑAL
+    try:
+        signal = evaluate_signal(setup["name"], context, market_data)
+        write_debug("INFO", f"Resultado evaluate_signal: {signal}")
+    except Exception as e:
+        logger.error(f"❌ Error: {e}")
+        write_debug("ERROR", f"Error evaluando señal: {e}")
+        return
 
     if signal is None:
-        print("⚠️ SIGNAL = None → no se escribió signal.json")
+        write_debug("WARN", "Signal = None")
         return
 
     if signal.get("action") == "NONE":
-        print("ℹ️ Acción NONE → MT5 no debe operar")
+        write_debug("INFO", "Action NONE")
         return
-    
-    # VERIFICAR CONFIANZA MÍNIMA
+
     confidence = signal.get("confidence", 0)
-    if confidence < MIN_CONFIDENCE_THRESHOLD:
-        print(f"⚠️ Confianza {confidence:.2%} < {MIN_CONFIDENCE_THRESHOLD:.2%} → señal rechazada")
-        print("   Esperando oportunidad con mayor confianza...")
+    min_conf = CONFIG.get("min_confidence", 35) / 100.0
+    # MODO EXPRORACION ML ----------------------ELIMINAR LUEGO DE QUE APRENDA
+    if ML_AVAILABLE:
+        ml_status = get_ml_status()
+        total_ml_trades = ml_status.get("total_trades", 0)
+        
+        if total_ml_trades < 20:
+            logger.info("MODO EXPLORACION ML ACTIVO (min_conf reducido a 10%)")
+            min_conf = 0.10
+    
+    if confidence < min_conf:
+        write_debug("WARN", f"Confianza insuficiente: {confidence}")
         return
 
-    # LOG FINAL
-    print("📈 SIGNAL FINAL:")
-    print(f"   Action: {signal['action']}")
-    print(f"   Confidence: {confidence:.2%}")
-    print(f"   SL/TP: {signal.get('sl_pips')}/{signal.get('tp_pips')} pips")
-    print(f"   Reason: {signal.get('reason', 'N/A')}")
-    print("✅ Señal lista para ser leída por MT5")
-    
-    # Actualizar tiempo del último trade
-    last_trade_time = current_time
+    write_debug("OK", "SEÑAL VÁLIDA DETECTADA")
+    last_trade_time = time.time()
 
 
-# ==============================
-# LOOP AUTÓNOMO
-# ==============================
 def start_bot():
-    global RUNNING, paused_until, consecutive_losses
+    global RUNNING, paused_until, consecutive_losses, CONFIG, cycle_count
+    
+    CONFIG = load_config()
+    
     RUNNING = True
+    write_bot_status(True)
+    write_debug("INFO", "Bot iniciado")
     paused_until = 0
     consecutive_losses = 0
-    
-    print("🚀 BOT INICIADO")
-    print(f"⚙️ CONFIGURACIÓN:")
-    print(f"   Intervalo de análisis: {LOOP_INTERVAL_SECONDS}s")
-    print(f"   Cooldown entre trades: {COOLDOWN_SECONDS}s")
-    print(f"   Máximo trades/día: {MAX_DAILY_TRADES}")
-    print(f"   Confianza mínima: {MIN_CONFIDENCE_THRESHOLD:.0%}")
-    print(f"   Max pérdidas consecutivas: {MAX_CONSECUTIVE_LOSSES}")
-    
-    # IMPORTANTE: Limpiar señales viejas al iniciar
-    print("\n🧹 Limpiando señales antiguas...")
-    clear_signal_file()
+    cycle_count = 0
 
+    loop_interval = 5
+    
     while RUNNING:
+        write_bot_status(True)
         try:
             run_cycle()
-            time.sleep(LOOP_INTERVAL_SECONDS)
+            time.sleep(loop_interval)
+        except KeyboardInterrupt:
+            break
         except Exception as e:
-            print("❌ ERROR :", e)
-            import traceback
-            traceback.print_exc()
+            write_debug("ERROR", f"ERROR LOOP: {e}")
             time.sleep(5)
 
-    print("🧯 BOT DETENIDO")
-    
-    # CRÍTICO: Al detener, eliminar signal.json y crear señal STOP
-    print("\n🛑 Deteniendo sistema de trading...")
-    print("   1. Eliminando señales antiguas...")
+    write_bot_status(False)
+    write_debug("INFO", "Bot detenido")
     clear_signal_file()
-    print("   2. Creando señal de STOP para el EA...")
     create_stop_signal()
-    print("✅ Sistema detenido correctamente")
-    
-    
+
+
 def stop_bot():
     global RUNNING
-    print("\n⏹️ Solicitando detención del bot...")
     RUNNING = False
+    write_bot_status(False)
+    write_debug("INFO", "Solicitud de parada")
 
 
-# ==============================
-# ENTRY POINT
-# ==============================
 if __name__ == "__main__":
     try:
         start_bot()
     except KeyboardInterrupt:
-        print("\n\n⌨️ Ctrl+C detectado - Deteniendo bot...")
         stop_bot()
+    except Exception as e:
+        write_debug("CRITICAL", f"FATAL: {e}")
     finally:
-        # Asegurar limpieza al salir
-        print("\n🧹 Limpieza final...")
         clear_signal_file()
         create_stop_signal()
-        print("👋 Bot cerrado completamente")
+        write_debug("INFO", "Proceso finalizado")
