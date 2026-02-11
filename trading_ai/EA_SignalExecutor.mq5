@@ -215,14 +215,22 @@ void OnTradeTransaction(
       
    if((ENUM_DEAL_ENTRY)HistoryDealGetInteger(deal_ticket, DEAL_ENTRY) != DEAL_ENTRY_OUT)
       return;
-      
+
    double profit = HistoryDealGetDouble(deal_ticket, DEAL_PROFIT);
    double pips = profit / 10.0;
-   
+
    string res = pips >= 0 ? "WIN" : "LOSS";
-   
-   WriteTradeFeedback(res, pips);
-   
+
+   // Solo escribir feedback si el trade fue abierto por el bot (tiene signal_id)
+   if(active_signal_id != "")
+   {
+      WriteTradeFeedback(res, pips);
+   }
+   else
+   {
+      Print("ℹ️ Trade manual cerrado (sin signal_id), no se escribe feedback");
+   }
+
    active_signal_id = "";
    active_action = "";
    
@@ -286,9 +294,13 @@ void WriteMarketData()
    else if(atr_buffer[0] < atr_avg * 0.5)
       volatility = "LOW";
    
+   // MACD histogram
+   double macd_histogram = macd_main[0] - macd_signal[0];
+
    // JSON
    string json = "{\n";
    json += "  \"symbol\": \"" + _Symbol + "\",\n";
+   json += "  \"timeframe\": \"" + EnumToString(Period()) + "\",\n";
    json += "  \"timestamp\": \"" + TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS) + "\",\n";
    json += "  \"bid\": " + DoubleToString(bid, _Digits) + ",\n";
    json += "  \"ask\": " + DoubleToString(ask, _Digits) + ",\n";
@@ -296,13 +308,20 @@ void WriteMarketData()
    json += "    \"rsi\": " + DoubleToString(rsi_buffer[0], 2) + ",\n";
    json += "    \"macd\": {\n";
    json += "      \"main\": " + DoubleToString(macd_main[0], _Digits) + ",\n";
-   json += "      \"signal\": " + DoubleToString(macd_signal[0], _Digits) + "\n";
+   json += "      \"signal\": " + DoubleToString(macd_signal[0], _Digits) + ",\n";
+   json += "      \"histogram\": " + DoubleToString(macd_histogram, _Digits) + "\n";
+   json += "    },\n";
+   json += "    \"ema\": {\n";
+   json += "      \"fast\": " + DoubleToString(ema_fast_buffer[0], _Digits) + ",\n";
+   json += "      \"slow\": " + DoubleToString(ema_slow_buffer[0], _Digits) + ",\n";
+   json += "      \"long\": " + DoubleToString(ema_long_buffer[0], _Digits) + "\n";
    json += "    },\n";
    json += "    \"bollinger\": {\n";
    json += "      \"upper\": " + DoubleToString(bb_upper[0], _Digits) + ",\n";
    json += "      \"middle\": " + DoubleToString(bb_middle[0], _Digits) + ",\n";
    json += "      \"lower\": " + DoubleToString(bb_lower[0], _Digits) + "\n";
-   json += "    }\n";
+   json += "    },\n";
+   json += "    \"atr\": " + DoubleToString(atr_buffer[0], _Digits) + "\n";
    json += "  },\n";
    json += "  \"analysis\": {\n";
    json += "    \"trend\": \"" + trend + "\",\n";
@@ -367,8 +386,8 @@ void OnTick()
    static bool logged = false;
    logged = false;
    
-   // No operar si hay posiciones
-   if(PositionsTotal() > 0)
+   // No operar si ya hay una orden del bot activa
+   if(active_signal_id != "")
       return;
 
    // Leer señal
