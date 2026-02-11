@@ -46,42 +46,52 @@ def evaluate(context: dict, market_data: dict):
     
     # ========== SEÑAL ALCISTA ==========
     if trend in ["STRONG_UP", "UP"]:
-        
-        # Verificar confirmaciones
+
         confirmations = 0
-        confidence_base = 0.65
-        
-        # 1. MACD debe ser alcista
-        if macd_state in ["BULLISH", "STRONG_BULLISH"]:
+        confidence_base = 0.50
+
+        # 1. MACD confirma dirección (no es hard-reject, ajusta confianza)
+        if macd_state in ["STRONG_BULLISH"]:
             confirmations += 1
-            confidence_base += 0.10
+            confidence_base += 0.20
+        elif macd_state in ["BULLISH"]:
+            confirmations += 1
+            confidence_base += 0.15
+        elif macd_state == "NEUTRAL":
+            confidence_base += 0.05
         else:
-            result["reason"] = f"MACD no confirma alcista (macd_state={macd_state})"
-            return result
-        
+            # MACD bajista en tendencia alcista: señal débil pero no rechazar
+            confidence_base -= 0.10
+
         # 2. RSI no debe estar sobrecomprado
-        if rsi_state in ["OVERBOUGHT"]:
+        if rsi_state == "OVERBOUGHT":
             result["reason"] = f"RSI sobrecomprado, esperando pullback (rsi_state={rsi_state})"
             return result
-        
+
         if rsi_state in ["STRONG", "NEUTRAL"]:
             confirmations += 1
             confidence_base += 0.05
-        
+
         # 3. Mejor entrada en pullback (cerca de media de Bollinger)
         if bb_position in ["MIDDLE", "LOWER_HALF"]:
             confirmations += 1
             confidence_base += 0.10
-        
+        elif bb_position == "NEAR_UPPER":
+            confidence_base -= 0.05
+
         # 4. Bonus si tendencia es fuerte
         if trend == "STRONG_UP":
             confidence_base += 0.10
-        
-        # Generar señal BUY
+
+        # Solo generar señal si hay mínima confianza
+        if confidence_base < 0.30:
+            result["reason"] = f"Confianza insuficiente para BUY ({confidence_base:.2f})"
+            return result
+
         result["signal"] = "BUY"
         result["confidence"] = min(0.95, confidence_base)
         result["reason"] = f"Trend Following BUY - {confirmations} confirmaciones"
-        
+
         # Ajustar SL/TP según volatilidad
         volatility = context.get("volatility", "NORMAL")
         if volatility == "HIGH":
@@ -90,46 +100,57 @@ def evaluate(context: dict, market_data: dict):
         elif volatility == "LOW":
             result["sl_pips"] = 10
             result["tp_pips"] = 15
-        
+
         return result
-    
+
     # ========== SEÑAL BAJISTA ==========
     if trend in ["STRONG_DOWN", "DOWN"]:
-        
+
         confirmations = 0
-        confidence_base = 0.65
-        
-        # 1. MACD debe ser bajista
-        if macd_state in ["BEARISH", "STRONG_BEARISH"]:
+        confidence_base = 0.50
+
+        # 1. MACD confirma dirección (no es hard-reject, ajusta confianza)
+        if macd_state in ["STRONG_BEARISH"]:
             confirmations += 1
-            confidence_base += 0.10
+            confidence_base += 0.20
+        elif macd_state in ["BEARISH"]:
+            confirmations += 1
+            confidence_base += 0.15
+        elif macd_state == "NEUTRAL":
+            confidence_base += 0.05
         else:
-            result["reason"] = f"MACD no confirma bajista (macd_state={macd_state})"
-            return result
-        
+            # MACD alcista en tendencia bajista: señal débil pero no rechazar
+            confidence_base -= 0.10
+
         # 2. RSI no debe estar sobrevendido
-        if rsi_state in ["OVERSOLD"]:
+        if rsi_state == "OVERSOLD":
             result["reason"] = f"RSI sobrevendido, esperando rebote (rsi_state={rsi_state})"
             return result
-        
+
         if rsi_state in ["WEAK", "NEUTRAL"]:
             confirmations += 1
             confidence_base += 0.05
-        
+
         # 3. Mejor entrada en pullback (cerca de media de Bollinger)
         if bb_position in ["MIDDLE", "UPPER_HALF"]:
             confirmations += 1
             confidence_base += 0.10
-        
+        elif bb_position == "NEAR_LOWER":
+            confidence_base -= 0.05
+
         # 4. Bonus si tendencia es fuerte
         if trend == "STRONG_DOWN":
             confidence_base += 0.10
-        
-        # Generar señal SELL
+
+        # Solo generar señal si hay mínima confianza
+        if confidence_base < 0.30:
+            result["reason"] = f"Confianza insuficiente para SELL ({confidence_base:.2f})"
+            return result
+
         result["signal"] = "SELL"
         result["confidence"] = min(0.95, confidence_base)
         result["reason"] = f"Trend Following SELL - {confirmations} confirmaciones"
-        
+
         # Ajustar SL/TP según volatilidad
         volatility = context.get("volatility", "NORMAL")
         if volatility == "HIGH":
@@ -138,7 +159,7 @@ def evaluate(context: dict, market_data: dict):
         elif volatility == "LOW":
             result["sl_pips"] = 10
             result["tp_pips"] = 15
-        
+
         return result
     
     # Sin señal
