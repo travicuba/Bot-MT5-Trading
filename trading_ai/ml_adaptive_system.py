@@ -75,30 +75,32 @@ class MLAdaptiveSystem:
         else:
             return "OPTIMIZATION"
     
-    def get_total_trades(self):
-        """Cuenta trades totales"""
+    def _load_trades(self):
+        """Carga trades del historial, soportando ambos formatos (lista o dict)"""
         if not os.path.exists(self.history_file):
-            return 0
-        
+            return []
+
         try:
             with open(self.history_file, 'r') as f:
                 history = json.load(f)
-            return len(history.get("trades", []))
+            # feedback_processor guarda como lista plana [...]
+            if isinstance(history, list):
+                return history
+            # Formato alternativo: {"trades": [...]}
+            return history.get("trades", [])
         except:
-            return 0
+            return []
+
+    def get_total_trades(self):
+        """Cuenta trades totales"""
+        return len(self._load_trades())
     
     def analyze_performance(self, last_n=50):
         """
         Análisis profundo de performance
         """
-        if not os.path.exists(self.history_file):
-            return None
-        
         try:
-            with open(self.history_file, 'r') as f:
-                history = json.load(f)
-            
-            trades = history.get("trades", [])
+            trades = self._load_trades()
             if len(trades) < 10:
                 return None
             
@@ -110,7 +112,7 @@ class MLAdaptiveSystem:
             total = len(recent)
             win_rate = wins / total if total > 0 else 0
             
-            profits = [t.get("profit_pips", 0) for t in recent]
+            profits = [t.get("pips", t.get("profit_pips", 0)) for t in recent]
             avg_profit = statistics.mean(profits) if profits else 0
             
             # Performance por estrategia
@@ -119,7 +121,7 @@ class MLAdaptiveSystem:
             for t in recent:
                 strategy = t.get("setup", "UNKNOWN")
                 strategy_perf[strategy]["total"] += 1
-                strategy_perf[strategy]["profits"].append(t.get("profit_pips", 0))
+                strategy_perf[strategy]["profits"].append(t.get("pips", t.get("profit_pips", 0)))
                 if t.get("result") == "WIN":
                     strategy_perf[strategy]["wins"] += 1
             
