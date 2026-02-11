@@ -47,6 +47,8 @@ string active_action = "";
 datetime last_data_write_time = 0;
 datetime last_bot_status_check = 0;
 
+double synced_min_confidence = 0.30;  // Se actualiza desde bot_status.json
+
 int handle_rsi, handle_macd, handle_ema_fast, handle_ema_slow, handle_ema_long;
 int handle_bb, handle_atr;
 
@@ -81,8 +83,19 @@ bool IsBotRunning()
       Print("🛑 BOT EN STOP (running=false)");
       return false;
    }
-   
-   Print("✅ BOT CORRIENDO (running=true)");
+
+   // Leer min_confidence sincronizado desde Python
+   string mc_val = GetJSONValue(content, "min_confidence");
+   if(mc_val != "")
+   {
+      double mc = StringToDouble(mc_val);
+      if(mc > 0.0 && mc <= 1.0)
+      {
+         synced_min_confidence = mc;
+      }
+   }
+
+   Print("✅ BOT CORRIENDO (min_conf=", DoubleToString(synced_min_confidence, 2), ")");
    return true;
 }
 
@@ -158,10 +171,11 @@ bool ReadSignal(Signal &sig)
    if(sig.signal_id == "" || sig.signal_id == last_signal_id)
       return false;
 
-   // Verificar confidence
-   if(sig.confidence < Min_Confidence)
+   // Verificar confidence usando valor sincronizado desde Python
+   double effective_min_conf = synced_min_confidence;
+   if(sig.confidence < effective_min_conf)
    {
-      Print("⚠️ Confianza baja: ", sig.confidence);
+      Print("⚠️ Confianza baja: ", sig.confidence, " < ", DoubleToString(effective_min_conf, 2));
       return false;
    }
 
