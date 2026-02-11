@@ -192,8 +192,12 @@ last_trade_time = 0
 consecutive_losses = 0
 paused_until = 0
 cycle_count = 0
+signal_pending = False  # True cuando hay una señal activa esperando ejecución/cierre
+signal_pending_since = 0  # Timestamp de cuándo se envió la señal
+SIGNAL_PENDING_TIMEOUT = 300  # 5 minutos máximo esperando por un trade
 
 SIGNAL_FILE_PATH = "/home/travieso/.wine/drive_c/Program Files/MetaTrader 5/MQL5/Files/signals/signal.json"
+FEEDBACK_FILE_PATH = "/home/travieso/.wine/drive_c/Program Files/MetaTrader 5/MQL5/Files/trade_feedback.json"
 
 
 def clear_signal_file():
@@ -241,9 +245,10 @@ def create_stop_signal():
 
 def run_cycle():
     global last_trade_time, consecutive_losses, paused_until, cycle_count
-    
+    global signal_pending, signal_pending_since
+
     cycle_count += 1
-    
+
     logger.info("=" * 60)
     logger.info(f"🧠 Ciclo #{cycle_count}: {datetime.now()}")
     logger.info("=" * 60)
@@ -260,13 +265,35 @@ def run_cycle():
             logger.debug(f"ML adjust: {e}")
             write_debug("ERROR", f"ML adjust error: {e}")
 
-    # FEEDBACK
+    # FEEDBACK - siempre procesar (incluso si hay señal pendiente)
     try:
         if process_feedback():
-            logger.info("📊 Feedback procesado")
+            logger.info("📊 Feedback procesado - señal completada")
             write_debug("INFO", "Feedback procesado")
+            signal_pending = False  # Trade cerrado, podemos generar nueva señal
+            last_trade_time = time.time()  # Resetear cooldown desde cierre del trade
     except:
         pass
+
+    # VERIFICAR SI HAY SEÑAL PENDIENTE (esperando ejecución/cierre)
+    if signal_pending:
+        elapsed = time.time() - signal_pending_since
+        if elapsed < SIGNAL_PENDING_TIMEOUT:
+            write_debug("INFO", f"Señal pendiente ({elapsed:.0f}s), esperando feedback...")
+            return
+        else:
+            # Timeout - la señal no fue ejecutada o el feedback se perdió
+            logger.warning(f"⚠️ Timeout de señal pendiente ({elapsed:.0f}s), reseteando")
+            write_debug("WARN", "Timeout de señal pendiente")
+            signal_pending = False
+            clear_signal_file()
+
+    # COOLDOWN - esperar entre trades
+    cooldown = CONFIG.get("cooldown", 30)
+    elapsed_since_trade = time.time() - last_trade_time
+    if last_trade_time > 0 and elapsed_since_trade < cooldown:
+        write_debug("INFO", f"Cooldown activo ({elapsed_since_trade:.0f}s/{cooldown}s)")
+        return
 
     # MERCADO
     try:
@@ -275,7 +302,7 @@ def run_cycle():
         logger.error(f"❌ Error: {e}")
         write_debug("ERROR", f"Error leyendo mercado: {e}")
         return
-    
+
     if not market_data:
         logger.warning("⏩ Sin datos")
         write_debug("WARN", "Sin datos de mercado")
@@ -327,16 +354,18 @@ def run_cycle():
     if ML_AVAILABLE:
         ml_status = get_ml_status()
         total_ml_trades = ml_status.get("total_trades", 0)
-        
+
         if total_ml_trades < 20:
             logger.info("MODO EXPLORACION ML ACTIVO (min_conf reducido a 10%)")
             min_conf = 0.10
-    
+
     if confidence < min_conf:
         write_debug("WARN", f"Confianza insuficiente: {confidence}")
         return
 
     write_debug("OK", "SEÑAL VÁLIDA DETECTADA")
+    signal_pending = True
+    signal_pending_since = time.time()
     last_trade_time = time.time()
 
 
