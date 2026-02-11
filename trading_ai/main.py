@@ -26,9 +26,11 @@ sys.path.append(os.path.dirname(__file__))
 BOT_STATUS_FILE = "/home/travieso/.wine/drive_c/Program Files/MetaTrader 5/MQL5/Files/bot_status.json"
 
 def write_bot_status(running: bool):
+        min_conf_pct = CONFIG.get("min_confidence", 35) if CONFIG else 35
         data = {
             "running": running,
-            "timestamp": int(time.time())
+            "timestamp": int(time.time()),
+            "min_confidence": min_conf_pct / 100.0
         }
         os.makedirs(os.path.dirname(BOT_STATUS_FILE), exist_ok=True)
         with open(BOT_STATUS_FILE, "w") as f:
