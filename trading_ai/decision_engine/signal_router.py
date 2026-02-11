@@ -454,3 +454,4 @@ def _evaluate_volatility_breakout(context, market_data):
             }
 
     return {"signal": None, "confidence": 0.0, "reason": "Sin condiciones de volatility breakout"}
+
