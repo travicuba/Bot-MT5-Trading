@@ -625,6 +625,7 @@ class TradingBotGUI:
         
         # Secciones de configuración
         self.create_trading_config_section(content)
+        self.create_multitrade_config_section(content)
         self.create_risk_config_section(content)
         self.create_schedule_config_section(content)
     
@@ -667,8 +668,66 @@ class TradingBotGUI:
                                   font=("Segoe UI", 11, "bold"), width=5)
             value_label.pack(side=tk.LEFT)
     
+    def create_multitrade_config_section(self, parent):
+        """Seccion de multi-trade e inteligencia"""
+        frame = tk.LabelFrame(parent, text="  MULTI-TRADE E INTELIGENCIA  ", bg="#151b3d",
+                             fg="#4895ef", font=("Segoe UI", 12, "bold"),
+                             relief=tk.FLAT, borderwidth=2)
+        frame.pack(fill=tk.X, padx=10, pady=10)
+
+        container = tk.Frame(frame, bg="#151b3d")
+        container.pack(fill=tk.X, padx=20, pady=20)
+
+        # Sliders para nuevas opciones
+        mt_configs = [
+            ("Trades concurrentes max:", "max_concurrent_trades", 1, 10, self.config.get("max_concurrent_trades", 3)),
+            ("Intervalo min entre senales (seg):", "min_signal_interval", 10, 300, self.config.get("min_signal_interval", 60)),
+        ]
+
+        for label, key, min_val, max_val, default in mt_configs:
+            row = tk.Frame(container, bg="#151b3d")
+            row.pack(fill=tk.X, pady=10)
+
+            tk.Label(row, text=label, bg="#151b3d", fg="#e0e6ff",
+                    font=("Segoe UI", 10), width=30, anchor="w").pack(side=tk.LEFT)
+
+            var = tk.IntVar(value=default)
+            self.config_vars[key] = var
+
+            scale = tk.Scale(row, from_=min_val, to=max_val, orient=tk.HORIZONTAL,
+                           variable=var, bg="#1e2749", fg="#e0e6ff", highlightthickness=0,
+                           troughcolor="#0a0e27", activebackground="#4895ef", length=200)
+            scale.pack(side=tk.LEFT, padx=10)
+
+            value_label = tk.Label(row, textvariable=var, bg="#151b3d", fg="#4895ef",
+                                  font=("Segoe UI", 11, "bold"), width=5)
+            value_label.pack(side=tk.LEFT)
+
+        # Checkboxes
+        self.avoid_repeat_var = tk.BooleanVar(value=self.config.get("avoid_repeat_strategy", True))
+        self.config_vars["avoid_repeat_strategy"] = self.avoid_repeat_var
+
+        chk_row = tk.Frame(container, bg="#151b3d")
+        chk_row.pack(fill=tk.X, pady=10)
+
+        tk.Checkbutton(chk_row, text="No repetir misma estrategia+direccion en trades activos",
+                       variable=self.avoid_repeat_var, bg="#151b3d", fg="#e0e6ff",
+                       selectcolor="#1e2749", activebackground="#151b3d",
+                       activeforeground="#e0e6ff", font=("Segoe UI", 10)).pack(side=tk.LEFT)
+
+        self.auto_optimize_var = tk.BooleanVar(value=self.config.get("auto_optimize", True))
+        self.config_vars["auto_optimize"] = self.auto_optimize_var
+
+        chk_row2 = tk.Frame(container, bg="#151b3d")
+        chk_row2.pack(fill=tk.X, pady=10)
+
+        tk.Checkbutton(chk_row2, text="Auto-optimizacion ML (el bot se ajusta solo)",
+                       variable=self.auto_optimize_var, bg="#151b3d", fg="#e0e6ff",
+                       selectcolor="#1e2749", activebackground="#151b3d",
+                       activeforeground="#e0e6ff", font=("Segoe UI", 10)).pack(side=tk.LEFT)
+
     def create_risk_config_section(self, parent):
-        """Sección de gestión de riesgo"""
+        """Seccion de gestion de riesgo"""
         frame = tk.LabelFrame(parent, text="  GESTIÓN DE RIESGO  ", bg="#151b3d",
                              fg="#4895ef", font=("Segoe UI", 12, "bold"),
                              relief=tk.FLAT, borderwidth=2)
@@ -1952,7 +2011,8 @@ Reason: {signal.get('reason', 'N/A')}
         files = [
             ("Market Data", "/home/travieso/.wine/drive_c/Program Files/MetaTrader 5/MQL5/Files/market_data.json"),
             ("Signal", "/home/travieso/.wine/drive_c/Program Files/MetaTrader 5/MQL5/Files/signals/signal.json"),
-            ("Trade Feedback", "/home/travieso/.wine/drive_c/Program Files/MetaTrader 5/MQL5/Files/trade_feedback.json"),
+            ("Trade Feedback (legacy)", "/home/travieso/.wine/drive_c/Program Files/MetaTrader 5/MQL5/Files/trade_feedback.json"),
+            ("Feedback Queue", "/home/travieso/.wine/drive_c/Program Files/MetaTrader 5/MQL5/Files/trade_feedback"),
             ("Setup Stats", "learning_data/setup_stats.json"),
             ("Trade History", "learning_data/trade_history.json"),
             ("Processed Signals", "learning_data/processed_signals.txt")

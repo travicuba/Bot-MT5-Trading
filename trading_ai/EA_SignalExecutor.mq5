@@ -1,6 +1,8 @@
 //+------------------------------------------------------------------+
-//| EA_SignalExecutor.mq5 - CORREGIDO                                |
-//| Se guía por bot_status.json, NO por edad de signal.json          |
+//| EA_SignalExecutor.mq5 v6.0 - MULTI-TRADE + FEEDBACK QUEUE       |
+//| Soporta multiples operaciones simultaneas                        |
+//| Feedback por archivos individuales (no se pierden cierres masivos)|
+//| Borra signal.json despues de leer para evitar re-lecturas        |
 //+------------------------------------------------------------------+
 #property strict
 
@@ -11,11 +13,12 @@ CTrade trade;
 //================ CONFIG =================//
 input string Bot_Status_File = "bot_status.json";
 input string Signal_File = "signals\\signal.json";
-input string Feedback_File = "trade_feedback.json";
+input string Feedback_Folder = "trade_feedback\\";
 input string Market_Data_File = "market_data.json";
 
 input double Min_Confidence = 0.30;
 input int    Data_Write_Interval = 10;
+input int    Max_Concurrent_Default = 3;
 
 // Indicadores
 input int    RSI_Period = 14;
@@ -37,17 +40,28 @@ struct Signal
    double confidence;
    double sl_pips;
    double tp_pips;
+   double lot_size;
 };
+
+//================ MULTI-TRADE TRACKING =================//
+#define MAX_TRACKED_TRADES 20
+
+string tracked_signal_ids[MAX_TRACKED_TRADES];
+ulong  tracked_position_ids[MAX_TRACKED_TRADES];
+int    tracked_count = 0;
+
+// Pending signal - se asigna antes de abrir trade, se mapea en OnTradeTransaction
+string pending_signal_id = "";
 
 //================ GLOBAL =================//
 string last_signal_id = "";
-string active_signal_id = "";
-string active_action = "";
 
 datetime last_data_write_time = 0;
 datetime last_bot_status_check = 0;
 
-double synced_min_confidence = 0.30;  // Se actualiza desde bot_status.json
+double synced_min_confidence = 0.30;
+int    synced_max_concurrent = 3;
+double synced_lot_size = 0.01;
 
 int handle_rsi, handle_macd, handle_ema_fast, handle_ema_slow, handle_ema_long;
 int handle_bb, handle_atr;
@@ -55,47 +69,110 @@ int handle_bb, handle_atr;
 double pip_value;
 long stops_level;
 
+//================ TRADE TRACKING FUNCTIONS =================//
+void AddTradeMapping(ulong position_id, string signal_id)
+{
+   if(tracked_count >= MAX_TRACKED_TRADES)
+   {
+      Print("WARNING: Max tracked trades reached, removing oldest");
+      // Shift array left
+      for(int i = 0; i < tracked_count - 1; i++)
+      {
+         tracked_signal_ids[i] = tracked_signal_ids[i + 1];
+         tracked_position_ids[i] = tracked_position_ids[i + 1];
+      }
+      tracked_count--;
+   }
+
+   tracked_signal_ids[tracked_count] = signal_id;
+   tracked_position_ids[tracked_count] = position_id;
+   tracked_count++;
+
+   Print("TRACKING: Posicion ", position_id, " -> ", signal_id, " (total: ", tracked_count, ")");
+}
+
+string FindAndRemoveSignalId(ulong position_id)
+{
+   for(int i = 0; i < tracked_count; i++)
+   {
+      if(tracked_position_ids[i] == position_id)
+      {
+         string sig_id = tracked_signal_ids[i];
+
+         // Shift remaining elements left
+         for(int j = i; j < tracked_count - 1; j++)
+         {
+            tracked_signal_ids[j] = tracked_signal_ids[j + 1];
+            tracked_position_ids[j] = tracked_position_ids[j + 1];
+         }
+         tracked_count--;
+
+         Print("UNTRACK: Posicion ", position_id, " era ", sig_id, " (quedan: ", tracked_count, ")");
+         return sig_id;
+      }
+   }
+   return "";
+}
+
+int CountActiveBotTrades()
+{
+   return tracked_count;
+}
+
 //================ BOT STATUS CHECK =================//
 bool IsBotRunning()
 {
-   // Verificar cada 5 segundos
    datetime current_time = TimeCurrent();
    if(current_time - last_bot_status_check < 5)
-      return true;  // Asumir que sigue corriendo
-   
+      return true;
+
    last_bot_status_check = current_time;
-   
+
    int handle = FileOpen(Bot_Status_File, FILE_READ | FILE_TXT | FILE_ANSI);
    if(handle == INVALID_HANDLE)
    {
-      Print("⚠️ BOT STATUS NO DETECTADO");
+      Print("BOT STATUS NO DETECTADO");
       return false;
    }
-   
+
    string content = "";
    while(!FileIsEnding(handle))
       content += FileReadString(handle);
    FileClose(handle);
-   
-   // Verificar si "running": true
+
    if(StringFind(content, "\"running\": true") < 0)
    {
-      Print("🛑 BOT EN STOP (running=false)");
+      Print("BOT EN STOP (running=false)");
       return false;
    }
 
-   // Leer min_confidence sincronizado desde Python
+   // Leer min_confidence sincronizado
    string mc_val = GetJSONValue(content, "min_confidence");
    if(mc_val != "")
    {
       double mc = StringToDouble(mc_val);
       if(mc > 0.0 && mc <= 1.0)
-      {
          synced_min_confidence = mc;
-      }
    }
 
-   Print("✅ BOT CORRIENDO (min_conf=", DoubleToString(synced_min_confidence, 2), ")");
+   // Leer max_concurrent_trades
+   string mct_val = GetJSONValue(content, "max_concurrent_trades");
+   if(mct_val != "")
+   {
+      int mct = (int)StringToInteger(mct_val);
+      if(mct >= 1 && mct <= MAX_TRACKED_TRADES)
+         synced_max_concurrent = mct;
+   }
+
+   // Leer lot_size
+   string lot_val = GetJSONValue(content, "lot_size");
+   if(lot_val != "")
+   {
+      double lot = StringToDouble(lot_val);
+      if(lot >= 0.01 && lot <= 10.0)
+         synced_lot_size = lot;
+   }
+
    return true;
 }
 
@@ -117,12 +194,17 @@ string GetJSONValue(string json, string key)
    while(pos < StringLen(json))
    {
       ushort c = StringGetCharacter(json, pos);
-      if(c == ',' || c == '}' || c == '\"')
+      if(c == ',' || c == '}' || c == '\"' || c == '\n' || c == '\r')
          break;
 
       value += CharToString(c);
       pos++;
    }
+
+   // Trim spaces
+   StringTrimLeft(value);
+   StringTrimRight(value);
+
    return value;
 }
 
@@ -131,14 +213,11 @@ bool ReadSignal(Signal &sig)
 {
    int handle = FileOpen(Signal_File, FILE_READ | FILE_TXT | FILE_ANSI);
    if(handle == INVALID_HANDLE)
-   {
       return false;
-   }
 
    string content = "";
    while(!FileIsEnding(handle))
       content += FileReadString(handle);
-
    FileClose(handle);
 
    if(StringLen(content) == 0)
@@ -153,55 +232,95 @@ bool ReadSignal(Signal &sig)
    sig.sl_pips    = StringToDouble(GetJSONValue(content, "sl_pips"));
    sig.tp_pips    = StringToDouble(GetJSONValue(content, "tp_pips"));
 
-   // Verificar señal STOP
+   // Leer lot_size de la senal si existe, sino usar el sincronizado
+   string lot_str = GetJSONValue(content, "lot_size");
+   if(lot_str != "")
+      sig.lot_size = StringToDouble(lot_str);
+   else
+      sig.lot_size = synced_lot_size;
+
+   // Verificar senal STOP
    if(StringFind(sig.signal_id, "_STOP") >= 0)
    {
-      Print("🛑 SEÑAL STOP");
+      Print("SENAL STOP RECIBIDA");
       sig.action = "NONE";
+      // Borrar signal.json
+      FileDelete(Signal_File);
       return false;
    }
-   
-   // Verificar señal NONE
+
+   // Verificar senal NONE
    if(StringFind(sig.signal_id, "_NONE") >= 0)
    {
+      FileDelete(Signal_File);
       return false;
    }
-   
+
    // Verificar si ya procesada
    if(sig.signal_id == "" || sig.signal_id == last_signal_id)
       return false;
 
-   // Verificar confidence usando valor sincronizado desde Python
-   double effective_min_conf = synced_min_confidence;
-   if(sig.confidence < effective_min_conf)
+   // Verificar confidence
+   if(sig.confidence < synced_min_confidence)
    {
-      Print("⚠️ Confianza baja: ", sig.confidence, " < ", DoubleToString(effective_min_conf, 2));
+      Print("Confianza baja: ", sig.confidence, " < ", DoubleToString(synced_min_confidence, 2));
+      // Borrar signal.json para que Python pueda enviar nueva
+      FileDelete(Signal_File);
+      last_signal_id = sig.signal_id;
       return false;
    }
 
-   Print("✅ SEÑAL VÁLIDA");
+   Print("SENAL VALIDA DETECTADA");
    Print("   ID: ", sig.signal_id);
    Print("   Action: ", sig.action);
-   Print("   Confidence: ", sig.confidence);
-   
+   Print("   Confidence: ", DoubleToString(sig.confidence, 2));
+   Print("   Lot: ", DoubleToString(sig.lot_size, 2));
+
    last_signal_id = sig.signal_id;
-   
+
    return true;
 }
 
-//================ WRITE FEEDBACK =================//
-void WriteTradeFeedback(string result, double pips)
+//================ DELETE SIGNAL FILE =================//
+void DeleteSignalFile()
 {
-   int handle = FileOpen(Feedback_File, FILE_WRITE | FILE_TXT | FILE_ANSI);
+   if(FileIsExist(Signal_File))
+   {
+      FileDelete(Signal_File);
+      Print("signal.json consumido y eliminado");
+   }
+}
+
+//================ WRITE FEEDBACK (INDIVIDUAL FILE) =================//
+void WriteTradeFeedbackQueued(string signal_id, string result, double pips)
+{
+   // Crear carpeta si no existe
+   FolderCreate(Feedback_Folder);
+
+   // Nombre unico basado en signal_id y timestamp
+   string safe_id = signal_id;
+   StringReplace(safe_id, ":", "_");
+   StringReplace(safe_id, " ", "_");
+
+   string filename = Feedback_Folder + "fb_" + safe_id + ".json";
+
+   int handle = FileOpen(filename, FILE_WRITE | FILE_TXT | FILE_ANSI);
    if(handle == INVALID_HANDLE)
    {
-      Print("❌ No se pudo escribir feedback");
-      return;
+      Print("ERROR: No se pudo escribir feedback en ", filename);
+      // Intentar con nombre simplificado
+      filename = Feedback_Folder + "fb_" + IntegerToString(GetTickCount()) + ".json";
+      handle = FileOpen(filename, FILE_WRITE | FILE_TXT | FILE_ANSI);
+      if(handle == INVALID_HANDLE)
+      {
+         Print("ERROR CRITICO: No se pudo escribir feedback");
+         return;
+      }
    }
 
    string json =
       "{\n"
-      "  \"signal_id\": \"" + active_signal_id + "\",\n"
+      "  \"signal_id\": \"" + signal_id + "\",\n"
       "  \"result\": \"" + result + "\",\n"
       "  \"pips\": " + DoubleToString(pips, 2) + ",\n"
       "  \"timestamp\": \"" + TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS) + "\"\n"
@@ -210,7 +329,7 @@ void WriteTradeFeedback(string result, double pips)
    FileWriteString(handle, json);
    FileClose(handle);
 
-   Print("📊 FEEDBACK: ", result, " | Pips: ", pips);
+   Print("FEEDBACK ESCRITO: ", result, " | Pips: ", DoubleToString(pips, 2), " | Archivo: ", filename);
 }
 
 //================ ON TRADE TRANSACTION =================//
@@ -222,33 +341,51 @@ void OnTradeTransaction(
 {
    if(trans.type != TRADE_TRANSACTION_DEAL_ADD)
       return;
-      
+
    ulong deal_ticket = trans.deal;
    if(!HistoryDealSelect(deal_ticket))
       return;
-      
-   if((ENUM_DEAL_ENTRY)HistoryDealGetInteger(deal_ticket, DEAL_ENTRY) != DEAL_ENTRY_OUT)
+
+   ENUM_DEAL_ENTRY entry = (ENUM_DEAL_ENTRY)HistoryDealGetInteger(deal_ticket, DEAL_ENTRY);
+   ulong position_id = HistoryDealGetInteger(deal_ticket, DEAL_POSITION_ID);
+
+   // === TRADE ABIERTO ===
+   if(entry == DEAL_ENTRY_IN)
+   {
+      if(pending_signal_id != "")
+      {
+         AddTradeMapping(position_id, pending_signal_id);
+         Print("TRADE ABIERTO: Posicion ", position_id, " mapeada a ", pending_signal_id);
+         pending_signal_id = "";
+      }
       return;
-
-   double profit = HistoryDealGetDouble(deal_ticket, DEAL_PROFIT);
-   double pips = profit / 10.0;
-
-   string res = pips >= 0 ? "WIN" : "LOSS";
-
-   // Solo escribir feedback si el trade fue abierto por el bot (tiene signal_id)
-   if(active_signal_id != "")
-   {
-      WriteTradeFeedback(res, pips);
-   }
-   else
-   {
-      Print("ℹ️ Trade manual cerrado (sin signal_id), no se escribe feedback");
    }
 
-   active_signal_id = "";
-   active_action = "";
-   
-   Print("🔔 TRADE CERRADO: ", res, " | ", pips, " pips");
+   // === TRADE CERRADO ===
+   if(entry == DEAL_ENTRY_OUT)
+   {
+      double profit = HistoryDealGetDouble(deal_ticket, DEAL_PROFIT);
+      double swap = HistoryDealGetDouble(deal_ticket, DEAL_SWAP);
+      double commission = HistoryDealGetDouble(deal_ticket, DEAL_COMMISSION);
+      double total_profit = profit + swap + commission;
+      double pips = profit / 10.0;
+
+      string res = total_profit >= 0 ? "WIN" : "LOSS";
+
+      // Buscar signal_id por position_id
+      string sig_id = FindAndRemoveSignalId(position_id);
+
+      if(sig_id != "")
+      {
+         // Trade del bot - escribir feedback individual
+         WriteTradeFeedbackQueued(sig_id, res, pips);
+         Print("TRADE BOT CERRADO: ", res, " | ", DoubleToString(pips, 2), " pips | Signal: ", sig_id);
+      }
+      else
+      {
+         Print("Trade manual/externo cerrado: ", res, " | ", DoubleToString(pips, 2), " pips (sin feedback)");
+      }
+   }
 }
 
 //================ WRITE MARKET DATA =================//
@@ -256,10 +393,10 @@ void WriteMarketData()
 {
    double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
    double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-   
+
    double rsi_buffer[], macd_main[], macd_signal[], ema_fast_buffer[], ema_slow_buffer[], ema_long_buffer[];
    double bb_upper[], bb_middle[], bb_lower[], atr_buffer[];
-   
+
    ArraySetAsSeries(rsi_buffer, true);
    ArraySetAsSeries(macd_main, true);
    ArraySetAsSeries(macd_signal, true);
@@ -270,7 +407,7 @@ void WriteMarketData()
    ArraySetAsSeries(bb_middle, true);
    ArraySetAsSeries(bb_lower, true);
    ArraySetAsSeries(atr_buffer, true);
-   
+
    if(CopyBuffer(handle_rsi, 0, 0, 1, rsi_buffer) <= 0) return;
    if(CopyBuffer(handle_macd, 0, 0, 1, macd_main) <= 0) return;
    if(CopyBuffer(handle_macd, 1, 0, 1, macd_signal) <= 0) return;
@@ -281,7 +418,7 @@ void WriteMarketData()
    if(CopyBuffer(handle_bb, 1, 0, 1, bb_middle) <= 0) return;
    if(CopyBuffer(handle_bb, 2, 0, 1, bb_lower) <= 0) return;
    if(CopyBuffer(handle_atr, 0, 0, 1, atr_buffer) <= 0) return;
-   
+
    // Trend detection
    string trend = "SIDEWAYS";
    if(ema_fast_buffer[0] > ema_slow_buffer[0] && ema_slow_buffer[0] > ema_long_buffer[0])
@@ -292,7 +429,7 @@ void WriteMarketData()
       trend = "STRONG_DOWN";
    else if(ema_fast_buffer[0] < ema_slow_buffer[0])
       trend = "DOWN";
-   
+
    // Volatility
    double atr_array[20];
    ArraySetAsSeries(atr_array, true);
@@ -301,13 +438,13 @@ void WriteMarketData()
    for(int i = 0; i < 20; i++)
       atr_avg += atr_array[i];
    atr_avg /= 20;
-   
+
    string volatility = "NORMAL";
    if(atr_buffer[0] > atr_avg * 1.5)
       volatility = "HIGH";
    else if(atr_buffer[0] < atr_avg * 0.5)
       volatility = "LOW";
-   
+
    // MACD histogram
    double macd_histogram = macd_main[0] - macd_signal[0];
 
@@ -342,7 +479,7 @@ void WriteMarketData()
    json += "    \"volatility\": \"" + volatility + "\"\n";
    json += "  }\n";
    json += "}\n";
-   
+
    int handle = FileOpen(Market_Data_File, FILE_WRITE | FILE_TXT | FILE_ANSI);
    if(handle != INVALID_HANDLE)
    {
@@ -361,56 +498,60 @@ bool InitIndicators()
    handle_ema_long = iMA(_Symbol, PERIOD_CURRENT, EMA_Long, 0, MODE_EMA, PRICE_CLOSE);
    handle_bb = iBands(_Symbol, PERIOD_CURRENT, BB_Period, 0, BB_Deviation, PRICE_CLOSE);
    handle_atr = iATR(_Symbol, PERIOD_CURRENT, ATR_Period);
-   
-   if(handle_rsi == INVALID_HANDLE || handle_macd == INVALID_HANDLE || 
+
+   if(handle_rsi == INVALID_HANDLE || handle_macd == INVALID_HANDLE ||
       handle_ema_fast == INVALID_HANDLE || handle_ema_slow == INVALID_HANDLE ||
       handle_ema_long == INVALID_HANDLE || handle_bb == INVALID_HANDLE ||
       handle_atr == INVALID_HANDLE)
    {
-      Print("❌ Error inicializando indicadores");
+      Print("Error inicializando indicadores");
       return false;
    }
-   
-   Print("✅ Indicadores OK");
+
+   Print("Indicadores OK");
    return true;
 }
 
 //================ ON TICK =================//
 void OnTick()
 {
-   // Escribir market data periódicamente
+   // Escribir market data periodicamente
    datetime current_time = TimeCurrent();
    if(current_time - last_data_write_time >= Data_Write_Interval)
    {
       WriteMarketData();
       last_data_write_time = current_time;
    }
-   
+
    // VERIFICAR BOT STATUS
    if(!IsBotRunning())
    {
       static bool logged = false;
       if(!logged)
       {
-         Print("⏸️ EA EN ESPERA - Bot Python detenido");
+         Print("EA EN ESPERA - Bot Python detenido");
          logged = true;
       }
       return;
    }
    static bool logged = false;
    logged = false;
-   
-   // No operar si ya hay una orden del bot activa
-   if(active_signal_id != "")
+
+   // Verificar limite de trades concurrentes del bot
+   int active_bot_trades = CountActiveBotTrades();
+   if(active_bot_trades >= synced_max_concurrent)
       return;
 
-   // Leer señal
+   // Leer senal
    Signal sig;
    if(!ReadSignal(sig))
       return;
-   
+
    if(sig.action == "NONE")
+   {
+      DeleteSignalFile();
       return;
+   }
 
    // Calcular pip value
    int digits = (int)SymbolInfoInteger(_Symbol, SYMBOL_DIGITS);
@@ -418,19 +559,24 @@ void OnTick()
       pip_value = 10 * _Point;
    else
       pip_value = _Point;
-   
+
    stops_level = SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL);
 
-   double lot = 0.01;
+   double lot = sig.lot_size;
    double entry_price, sl_price, tp_price;
-   
+
+   // Guardar pending_signal_id ANTES de abrir trade
+   // Se mapeara en OnTradeTransaction cuando DEAL_ENTRY_IN llegue
+   pending_signal_id = sig.signal_id;
+
+   bool order_ok = false;
+
    if(sig.action == "BUY")
    {
       entry_price = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
       sl_price = entry_price - (sig.sl_pips * pip_value);
       tp_price = entry_price + (sig.tp_pips * pip_value);
-      
-      // Ajustar stops si es necesario
+
       double min_distance = stops_level * _Point;
       if(stops_level > 0)
       {
@@ -439,31 +585,20 @@ void OnTick()
          if((tp_price - entry_price) < min_distance)
             tp_price = entry_price + min_distance;
       }
-      
-      Print("📈 BUY @ ", DoubleToString(entry_price, _Digits));
-      Print("   SL: ", DoubleToString(sl_price, _Digits));
-      Print("   TP: ", DoubleToString(tp_price, _Digits));
-      
-      bool ok = trade.Buy(lot, _Symbol, entry_price, sl_price, tp_price);
-      
-      if(ok)
-      {
-         active_signal_id = sig.signal_id;
-         active_action = sig.action;
-         Print("✅ ORDEN BUY ABIERTA");
-      }
-      else
-      {
-         Print("❌ ERROR: ", trade.ResultRetcodeDescription());
-      }
+
+      Print("BUY @ ", DoubleToString(entry_price, _Digits),
+            " | SL: ", DoubleToString(sl_price, _Digits),
+            " | TP: ", DoubleToString(tp_price, _Digits),
+            " | Lot: ", DoubleToString(lot, 2));
+
+      order_ok = trade.Buy(lot, _Symbol, entry_price, sl_price, tp_price);
    }
    else if(sig.action == "SELL")
    {
       entry_price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
       sl_price = entry_price + (sig.sl_pips * pip_value);
       tp_price = entry_price - (sig.tp_pips * pip_value);
-      
-      // Ajustar stops
+
       double min_distance = stops_level * _Point;
       if(stops_level > 0)
       {
@@ -472,43 +607,55 @@ void OnTick()
          if((entry_price - tp_price) < min_distance)
             tp_price = entry_price - min_distance;
       }
-      
-      Print("📉 SELL @ ", DoubleToString(entry_price, _Digits));
-      Print("   SL: ", DoubleToString(sl_price, _Digits));
-      Print("   TP: ", DoubleToString(tp_price, _Digits));
-      
-      bool ok = trade.Sell(lot, _Symbol, entry_price, sl_price, tp_price);
-      
-      if(ok)
-      {
-         active_signal_id = sig.signal_id;
-         active_action = sig.action;
-         Print("✅ ORDEN SELL ABIERTA");
-      }
-      else
-      {
-         Print("❌ ERROR: ", trade.ResultRetcodeDescription());
-      }
+
+      Print("SELL @ ", DoubleToString(entry_price, _Digits),
+            " | SL: ", DoubleToString(sl_price, _Digits),
+            " | TP: ", DoubleToString(tp_price, _Digits),
+            " | Lot: ", DoubleToString(lot, 2));
+
+      order_ok = trade.Sell(lot, _Symbol, entry_price, sl_price, tp_price);
    }
+
+   if(order_ok)
+   {
+      Print("ORDEN ", sig.action, " ABIERTA (Signal: ", sig.signal_id, ")");
+      // El mapeo position_id -> signal_id se hace en OnTradeTransaction DEAL_ENTRY_IN
+   }
+   else
+   {
+      Print("ERROR ABRIENDO ORDEN: ", trade.ResultRetcodeDescription());
+      pending_signal_id = "";  // Limpiar pending si fallo
+   }
+
+   // SIEMPRE borrar signal.json despues de procesarlo
+   // Esto evita que se re-lea la misma senal
+   DeleteSignalFile();
 }
 
 //================ INIT =================//
 int OnInit()
 {
    Print("========================================");
-   Print("EA SignalExecutor v5.0 - FIXED");
-   Print("Se guía por bot_status.json");
+   Print("EA SignalExecutor v6.0 - MULTI-TRADE");
+   Print("Soporte multi-trade + feedback queue");
    Print("========================================");
-   
+
    if(!InitIndicators())
    {
-      Print("❌ Fallo al inicializar");
+      Print("Fallo al inicializar");
       return INIT_FAILED;
    }
-   
+
+   // Crear carpeta de feedback
+   FolderCreate(Feedback_Folder);
+
+   // Inicializar tracking
+   tracked_count = 0;
+   pending_signal_id = "";
+
    WriteMarketData();
    last_data_write_time = TimeCurrent();
-   
+
    return INIT_SUCCEEDED;
 }
 
@@ -522,6 +669,6 @@ void OnDeinit(const int reason)
    if(handle_ema_long != INVALID_HANDLE) IndicatorRelease(handle_ema_long);
    if(handle_bb != INVALID_HANDLE) IndicatorRelease(handle_bb);
    if(handle_atr != INVALID_HANDLE) IndicatorRelease(handle_atr);
-   
-   Print("EA SignalExecutor DETENIDO");
+
+   Print("EA SignalExecutor v6.0 DETENIDO (trades trackeados: ", tracked_count, ")");
 }
