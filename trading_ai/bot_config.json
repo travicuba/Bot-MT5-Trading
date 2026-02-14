@@ -1,9 +1,13 @@
 {
     "min_confidence": 5,
-    "cooldown": 5,
+    "cooldown": 30,
     "max_daily_trades": 50,
     "max_losses": 5,
     "lot_size": 0.01,
     "start_hour": "00:00",
-    "end_hour": "23:59"
+    "end_hour": "23:59",
+    "max_concurrent_trades": 3,
+    "min_signal_interval": 60,
+    "avoid_repeat_strategy": true,
+    "auto_optimize": true
 }
