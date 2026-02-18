@@ -81,11 +81,16 @@ except:
 
 
 class TradingBotGUI:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("Trading AI - Professional Trading System")
-        self.root.geometry("1600x1000")
-        self.root.configure(bg="#0a0e27")
+    def __init__(self, root, parent=None, on_home=None):
+        self.root = root          # ventana Tk real → para after(), update(), etc.
+        self.parent = parent if parent is not None else root  # contenedor de widgets
+        self.on_home = on_home    # callback para volver al menú principal
+
+        # Solo configurar la ventana cuando se usa de forma independiente
+        if parent is None:
+            self.root.title("Trading AI - Professional Trading System")
+            self.root.geometry("1600x1000")
+            self.root.configure(bg="#0a0e27")
         
         # Variables de estado
         self.running_thread = None
@@ -196,8 +201,71 @@ class TradingBotGUI:
     
     def create_notebook(self):
         """Crear sistema de pestañas"""
-        self.notebook = ttk.Notebook(self.root)
+        # Barra de navegación superior (solo cuando se abre desde el launcher)
+        if self.on_home:
+            self._create_nav_bar()
+
+        self.notebook = ttk.Notebook(self.parent)
         self.notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+    def _create_nav_bar(self):
+        """Barra de navegación con botón de regreso al menú principal."""
+        nav = tk.Frame(self.parent, bg="#07091e", height=50)
+        nav.pack(fill=tk.X)
+        nav.pack_propagate(False)
+
+        # Línea de color inferior
+        tk.Frame(nav, bg="#4895ef", height=2).place(relx=0, rely=1.0, anchor="sw", relwidth=1)
+
+        back_btn = tk.Button(
+            nav, text="◀  Menú Principal",
+            command=self._go_home,
+            bg="#1e2749", fg="#e0e6ff",
+            font=("Segoe UI", 10, "bold"),
+            relief=tk.FLAT, cursor="hand2",
+            padx=14, pady=6, bd=0,
+            activebackground="#4895ef",
+            activeforeground="white",
+        )
+        back_btn.pack(side=tk.LEFT, padx=12, pady=8)
+
+        tk.Label(
+            nav,
+            text="📈  MetaTrader 5 — Panel de Trading",
+            bg="#07091e", fg="#4895ef",
+            font=("Segoe UI", 13, "bold"),
+        ).pack(side=tk.LEFT, padx=14)
+
+        self._nav_clock_lbl = tk.Label(nav, text="", bg="#07091e", fg="#8b9dc3",
+                                       font=("Consolas", 10))
+        self._nav_clock_lbl.pack(side=tk.RIGHT, padx=16)
+        self._update_nav_clock()
+
+    def _update_nav_clock(self):
+        """Actualizar reloj de la barra de navegación."""
+        try:
+            if self._nav_clock_lbl.winfo_exists():
+                self._nav_clock_lbl.configure(
+                    text=datetime.now().strftime("%Y-%m-%d   %H:%M:%S")
+                )
+                self.root.after(1000, self._update_nav_clock)
+        except Exception:
+            pass
+
+    def _go_home(self):
+        """Regresar al menú principal."""
+        if self.bot_state == "RUNNING":
+            from tkinter import messagebox as _mb
+            result = _mb.askyesno(
+                "Bot en ejecución",
+                "El bot MT5 está ejecutándose.\n\n"
+                "¿Deseas regresar al menú principal?\n"
+                "(El bot continuará en segundo plano)",
+            )
+            if not result:
+                return
+        if self.on_home:
+            self.on_home()
     
     # ==================== PESTAÑA 1: DASHBOARD ====================
     
@@ -2305,6 +2373,10 @@ Reason: {signal.get('reason', 'N/A')}
 
 # ========== EJECUCIÓN ==========
 if __name__ == "__main__":
+    # Uso directo (sin launcher) — mantiene compatibilidad hacia atrás
     root = tk.Tk()
+    root.title("Trading AI - Professional Trading System")
+    root.geometry("1600x1000")
+    root.configure(bg="#0a0e27")
     app = TradingBotGUI(root)
     root.mainloop()
