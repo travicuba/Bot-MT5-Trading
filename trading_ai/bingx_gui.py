@@ -209,16 +209,11 @@ class BingXPanel(tk.Frame):
             self.after(1000, self._tick_clock)
 
     def _go_home(self):
-        if self.bot_state == "RUNNING":
-            ok = messagebox.askyesno(
-                "Bot en ejecución",
-                "El bot BingX está ejecutándose.\n\n"
-                "¿Deseas regresar al menú principal?\n"
-                "(El bot se pausará)",
-            )
-            if not ok:
-                return
-            self._stop_bot()
+        """
+        Regresar al menú principal.
+        El panel queda oculto pero no destruido: el bot BingX continúa
+        ejecutándose en segundo plano y al volver el estado se conserva.
+        """
         self.on_home()
 
     # ──────────────────────────────────────────
@@ -985,28 +980,34 @@ class BingXPanel(tk.Frame):
     # ──────────────────────────────────────────
 
     def _auto_update(self):
-        if not self.winfo_exists():
+        """Auto-actualización con guarda contra widgets destruidos."""
+        try:
+            if not self.winfo_exists():
+                return
+        except Exception:
             return
 
-        # Actualizar estadísticas
-        self.stats = _load_stats()
-        self._update_stat_labels()
-
-        # Actualizar quick stats en dashboard
         try:
+            self.stats = _load_stats()
+            self._update_stat_labels()
+
             wr = (self.stats["wins"] / self.stats["total_trades"] * 100) \
                 if self.stats["total_trades"] > 0 else 0.0
             self.bx_lbl_total.configure(text=str(self.stats["total_trades"]))
             self.bx_lbl_wins.configure(text=str(self.stats["wins"]))
             self.bx_lbl_losses.configure(text=str(self.stats["losses"]))
             self.bx_lbl_wr.configure(text=f"{wr:.1f}%")
+
+            self._update_market_text()
         except Exception:
             pass
 
-        # Actualizar info de mercado
-        self._update_market_text()
-
-        self.after(5000, self._auto_update)
+        # Reprogramar solo si el frame sigue existiendo
+        try:
+            if self.winfo_exists():
+                self.after(5000, self._auto_update)
+        except Exception:
+            pass
 
     def _update_stat_labels(self):
         s = self.stats

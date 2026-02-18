@@ -253,17 +253,11 @@ class TradingBotGUI:
             pass
 
     def _go_home(self):
-        """Regresar al menú principal."""
-        if self.bot_state == "RUNNING":
-            from tkinter import messagebox as _mb
-            result = _mb.askyesno(
-                "Bot en ejecución",
-                "El bot MT5 está ejecutándose.\n\n"
-                "¿Deseas regresar al menú principal?\n"
-                "(El bot continuará en segundo plano)",
-            )
-            if not result:
-                return
+        """
+        Regresar al menú principal.
+        El panel MT5 queda oculto pero no destruido: el bot sigue corriendo
+        en segundo plano y al volver el estado se conserva íntegramente.
+        """
         if self.on_home:
             self.on_home()
     
@@ -1579,12 +1573,15 @@ class TradingBotGUI:
             self.pulse_indicator()
     
     def pulse_indicator(self):
-        """Efecto de pulso en el indicador"""
-        if self.bot_state == "RUNNING":
-            current_color = self.status_indicator.itemcget(self.status_circle, "fill")
-            new_color = "#05dd8f" if current_color == "#06ffa5" else "#06ffa5"
-            self.status_indicator.itemconfig(self.status_circle, fill=new_color)
-            self.root.after(800, self.pulse_indicator)
+        """Efecto de pulso en el indicador (seguro contra widgets destruidos)."""
+        try:
+            if self.bot_state == "RUNNING" and self.status_indicator.winfo_exists():
+                current_color = self.status_indicator.itemcget(self.status_circle, "fill")
+                new_color = "#05dd8f" if current_color == "#06ffa5" else "#06ffa5"
+                self.status_indicator.itemconfig(self.status_circle, fill=new_color)
+                self.root.after(800, self.pulse_indicator)
+        except Exception:
+            pass
     
     def load_stats(self):
         """Cargar estadísticas desde learning_data"""
@@ -2360,15 +2357,22 @@ Reason: {signal.get('reason', 'N/A')}
         self.update_last_signal()
     
     def auto_update(self):
-        """Actualización automática"""
-        self.load_stats()
-        self.update_all_displays()
-        
-        # Actualizar reloj en footer (si existe)
-        current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
-        # Repetir cada segundo
-        self.root.after(1000, self.auto_update)
+        """Actualización automática con guarda contra widgets destruidos."""
+        try:
+            # Detener el loop si el notebook ya no existe
+            if not self.notebook.winfo_exists():
+                return
+            self.load_stats()
+            self.update_all_displays()
+        except Exception:
+            pass
+
+        # Reprogramar solo si el widget sigue vivo
+        try:
+            if self.notebook.winfo_exists():
+                self.root.after(1000, self.auto_update)
+        except Exception:
+            pass
 
 
 # ========== EJECUCIÓN ==========
