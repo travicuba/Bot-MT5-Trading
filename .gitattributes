@@ -1,0 +1,16 @@
+# Forzar LF en todos los archivos de texto — evita CRLF en Linux/VPS
+* text=auto eol=lf
+
+# Python siempre LF
+*.py eol=lf
+
+# JSON siempre LF
+*.json eol=lf
+
+# Shell scripts siempre LF
+*.sh eol=lf
+
+# Archivos binarios sin conversión
+*.png binary
+*.jpg binary
+*.ico binary
