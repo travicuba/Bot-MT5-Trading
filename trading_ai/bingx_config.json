@@ -1,16 +1,13 @@
 {
     "api_key": "",
     "api_secret": "",
-    "demo_mode": true,
     "default_symbol": "BTC-USDT",
-    "default_leverage": 5,
+    "default_leverage": 10,
     "margin_type": "ISOLATED",
     "risk_percent": 1.0,
     "max_positions": 3,
     "min_confidence": 30,
     "cooldown": 60,
     "max_daily_trades": 20,
-    "max_losses": 3,
-    "telegram_token": "",
-    "telegram_chat_id": ""
+    "max_losses": 3
 }
