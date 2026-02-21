@@ -32,6 +32,8 @@
     <SolidColorBrush x:Key="ErrorBrush"        Color="{StaticResource ErrorColor}"/>
     <SolidColorBrush x:Key="RunningBrush"      Color="{StaticResource RunningColor}"/>
     <SolidColorBrush x:Key="StoppedBrush"      Color="{StaticResource StoppedColor}"/>
+    <SolidColorBrush x:Key="NavHoverBrush"     Color="{StaticResource NavHoverColor}"/>
+    <SolidColorBrush x:Key="NavActiveBrush"    Color="{StaticResource NavActiveColor}"/>
 
     <!-- ===== FUENTES ===== -->
     <FontFamily x:Key="PrimaryFont">Segoe UI</FontFamily>
@@ -231,7 +233,7 @@
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
-                            <Setter Property="Background"  Value="{StaticResource NavHoverColor}"/>
+                            <Setter Property="Background"  Value="{StaticResource NavHoverBrush}"/>
                             <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}"/>
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
@@ -280,12 +282,12 @@
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter TargetName="border" Property="Background"
-                                    Value="{StaticResource NavHoverColor}"/>
+                                    Value="{StaticResource NavHoverBrush}"/>
                             <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
                             <Setter TargetName="border" Property="Background"
-                                    Value="{StaticResource NavActiveColor}"/>
+                                    Value="{StaticResource NavActiveBrush}"/>
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
@@ -300,7 +302,7 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <Border Background="{StaticResource NavActiveColor}" Padding="{TemplateBinding Padding}">
+                    <Border Background="{StaticResource NavActiveBrush}" Padding="{TemplateBinding Padding}">
                         <Grid>
                             <Rectangle Width="3" HorizontalAlignment="Left"
                                        Fill="{StaticResource AccentBrush}" RadiusX="2" RadiusY="2"/>
