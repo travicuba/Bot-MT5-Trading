@@ -58,6 +58,15 @@ public class BotStats
     [JsonPropertyName("total_pips")]   public double     TotalPips   { get; set; }
     [JsonPropertyName("today")]        public PeriodStats Today      { get; set; } = new();
     [JsonPropertyName("week")]         public PeriodStats Week       { get; set; } = new();
+    [JsonPropertyName("setup_stats")]  public Dictionary<string, SetupStatEntry>? SetupStats { get; set; }
+}
+
+public class SetupStatEntry
+{
+    [JsonPropertyName("total")]  public int    Total  { get; set; }
+    [JsonPropertyName("wins")]   public int    Wins   { get; set; }
+    [JsonPropertyName("losses")] public int    Losses { get; set; }
+    [JsonPropertyName("pips")]   public double Pips   { get; set; }
 }
 
 // =====================

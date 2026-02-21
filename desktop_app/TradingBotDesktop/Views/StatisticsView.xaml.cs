@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -62,18 +61,17 @@ public partial class StatisticsView : Page, IRefreshable
 
                 // Por estrategia
                 var rows = new List<SetupRow>();
-                if (stats.SetupStats is JsonElement elem && elem.ValueKind == JsonValueKind.Object)
+                if (stats.SetupStats != null)
                 {
-                    foreach (var prop in elem.EnumerateObject())
+                    foreach (var kvp in stats.SetupStats)
                     {
-                        var v = prop.Value;
                         rows.Add(new SetupRow
                         {
-                            Name   = prop.Name,
-                            Trades = v.TryGetProperty("total", out var t)  ? t.GetInt32()    : 0,
-                            Wins   = v.TryGetProperty("wins",  out var w)  ? w.GetInt32()    : 0,
-                            Losses = v.TryGetProperty("losses",out var l)  ? l.GetInt32()    : 0,
-                            Pips   = v.TryGetProperty("pips",  out var p)  ? p.GetDouble()   : 0,
+                            Name   = kvp.Key,
+                            Trades = kvp.Value.Total,
+                            Wins   = kvp.Value.Wins,
+                            Losses = kvp.Value.Losses,
+                            Pips   = kvp.Value.Pips,
                         });
                     }
                 }

@@ -59,8 +59,8 @@ public partial class ConfigurationView : Page, IRefreshable
             auto_optimize         = ChkAutoOptimize.IsChecked ?? true,
         };
 
-        var result = await App.Api.UpdateConfigAsync(update);
-        if (result.HasValue)
+        bool ok = await App.Api.UpdateConfigAsync(update);
+        if (ok)
         {
             StatusMsg.Text = $"Configuracion guardada - {DateTime.Now:HH:mm:ss}";
         }

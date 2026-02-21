@@ -1,5 +1,4 @@
 using System.Net.Http;
-using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using TradingBotDesktop.Models;
@@ -21,17 +20,13 @@ public class ApiService
     {
         _baseUrl = baseUrl.TrimEnd('/');
         _apiKey  = apiKey;
-        _client  = new HttpClient
-        {
-            Timeout = TimeSpan.FromSeconds(10),
-        };
+        _client  = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
         SetApiKey(apiKey);
     }
 
     public void UpdateConnection(string baseUrl, string apiKey)
     {
         _baseUrl = baseUrl.TrimEnd('/');
-        _apiKey  = apiKey;
         SetApiKey(apiKey);
     }
 
@@ -43,9 +38,9 @@ public class ApiService
     }
 
     // =====================
-    // HELPERS
+    // HELPERS - clase (reference types)
     // =====================
-    private async Task<T?> GetAsync<T>(string endpoint)
+    private async Task<T?> GetAsync<T>(string endpoint) where T : class
     {
         try
         {
@@ -54,10 +49,10 @@ public class ApiService
             var json = await resp.Content.ReadAsStringAsync();
             return JsonSerializer.Deserialize<T>(json, _jsonOpts);
         }
-        catch { return default; }
+        catch { return null; }
     }
 
-    private async Task<T?> PostAsync<T>(string endpoint, object? body = null)
+    private async Task<T?> PostAsync<T>(string endpoint, object? body = null) where T : class
     {
         try
         {
@@ -70,21 +65,33 @@ public class ApiService
             var json = await resp.Content.ReadAsStringAsync();
             return JsonSerializer.Deserialize<T>(json, _jsonOpts);
         }
-        catch { return default; }
+        catch { return null; }
     }
 
-    private async Task<T?> PutAsync<T>(string endpoint, object body)
+    // Helper para PUT/DELETE que solo necesita saber si fue exitoso
+    private async Task<bool> PutBoolAsync(string endpoint, object body)
     {
         try
         {
             var content = new StringContent(
                 JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
             var resp = await _client.PutAsync($"{_baseUrl}{endpoint}", content);
+            return resp.IsSuccessStatusCode;
+        }
+        catch { return false; }
+    }
+
+    // Helper para GET que devuelve JsonElement (struct - no puede ser nullable generico)
+    private async Task<JsonElement> GetJsonAsync(string endpoint)
+    {
+        try
+        {
+            var resp = await _client.GetAsync($"{_baseUrl}{endpoint}");
             resp.EnsureSuccessStatusCode();
             var json = await resp.Content.ReadAsStringAsync();
-            return JsonSerializer.Deserialize<T>(json, _jsonOpts);
+            return JsonSerializer.Deserialize<JsonElement>(json, _jsonOpts);
         }
-        catch { return default; }
+        catch { return default; }   // ValueKind == Undefined indica fallo
     }
 
     private async Task<bool> DeleteAsync(string endpoint)
@@ -128,8 +135,9 @@ public class ApiService
     public Task<BotConfig?> GetConfigAsync()
         => GetAsync<BotConfig>("/api/config");
 
-    public Task<JsonElement?> UpdateConfigAsync(object configUpdate)
-        => PutAsync<JsonElement>("/api/config", configUpdate);
+    /// <summary>Retorna true si la config se guardó correctamente.</summary>
+    public Task<bool> UpdateConfigAsync(object configUpdate)
+        => PutBoolAsync("/api/config", configUpdate);
 
     // =====================
     // STATS & HISTORY
@@ -149,8 +157,9 @@ public class ApiService
     public Task<MaintenanceStatus?> GetMaintenanceAsync()
         => GetAsync<MaintenanceStatus>("/api/maintenance");
 
-    public Task<JsonElement?> SetMaintenanceAsync(bool enabled, string message = "")
-        => PutAsync<JsonElement>("/api/maintenance", new { enabled, message });
+    /// <summary>Retorna true si el modo mantenimiento se actualizó.</summary>
+    public Task<bool> SetMaintenanceAsync(bool enabled, string message = "")
+        => PutBoolAsync("/api/maintenance", new { enabled, message });
 
     // =====================
     // PUENTE MT5
@@ -161,11 +170,16 @@ public class ApiService
     public Task<bool> ConsumeSignalAsync()
         => DeleteAsync("/api/mt5/signal");
 
-    public Task<JsonElement?> GetMt5BotStatusAsync()
-        => GetAsync<JsonElement>("/api/mt5/bot_status");
+    /// <summary>
+    /// Devuelve bot_status como JsonElement.
+    /// Verificar: result.ValueKind != JsonValueKind.Undefined antes de usar.
+    /// </summary>
+    public Task<JsonElement> GetMt5BotStatusAsync()
+        => GetJsonAsync("/api/mt5/bot_status");
 
-    public Task<JsonElement?> UploadMarketDataAsync(object data)
-        => PutAsync<JsonElement>("/api/mt5/market_data", new { data });
+    /// <summary>Retorna true si market_data se subió correctamente.</summary>
+    public Task<bool> UploadMarketDataAsync(object data)
+        => PutBoolAsync("/api/mt5/market_data", new { data });
 
     public Task<ApiResponse?> UploadFeedbackAsync(
         string signalId, string result, double pips, string timestamp)

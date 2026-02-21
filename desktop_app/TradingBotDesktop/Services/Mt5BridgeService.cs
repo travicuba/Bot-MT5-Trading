@@ -209,10 +209,11 @@ public class Mt5BridgeService
             try
             {
                 var statusElem = await _api.GetMt5BotStatusAsync();
-                if (statusElem.HasValue)
+                // ValueKind == Undefined significa que la llamada fallo
+                if (statusElem.ValueKind != System.Text.Json.JsonValueKind.Undefined)
                 {
                     var statusPath = Path.Combine(_mt5FilesPath, "bot_status.json");
-                    var json = JsonSerializer.Serialize(statusElem.Value,
+                    var json = JsonSerializer.Serialize(statusElem,
                         new JsonSerializerOptions { WriteIndented = true });
                     await File.WriteAllTextAsync(statusPath, json, ct);
                     StatusText = "Activo";
