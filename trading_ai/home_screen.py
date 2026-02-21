@@ -37,8 +37,10 @@ AUTHOR       = "Daniel Hernández"
 SYSTEM_NAME  = "Trading AI System"
 
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MT5_STATUS_FILE  = "/home/travieso/.wine/drive_c/Program Files/MetaTrader 5/MQL5/Files/bot_status.json"
-BINGX_CFG_FILE   = os.path.join(_BASE_DIR, "bingx_config.json")
+MT5_STATUS_FILE   = "/home/travieso/.wine/drive_c/Program Files/MetaTrader 5/MQL5/Files/bot_status.json"
+BINGX_CFG_FILE    = os.path.join(_BASE_DIR, "bingx_config.json")
+BINGX_STATUS_FILE = os.path.join(_BASE_DIR, "bingx_status.json")
+BINGX_STATS_FILE  = os.path.join(_BASE_DIR, "bingx_stats.json")
 
 
 class HomeScreen(tk.Frame):
@@ -213,7 +215,7 @@ class HomeScreen(tk.Frame):
         row = tk.Frame(parent, bg=BG_DARK)
         row.pack(pady=4)
 
-        mt5_card = self._make_card(
+        mt5_card, self._mt5_bal_var, self._mt5_pnl_var, self._mt5_pnl_lbl = self._make_card(
             row,
             icon="📈",
             title="MetaTrader 5",
@@ -234,7 +236,7 @@ class HomeScreen(tk.Frame):
         sep = tk.Frame(row, bg=BG_PANEL, width=2)
         sep.pack(side=tk.LEFT, fill=tk.Y, padx=8, pady=10)
 
-        bingx_card = self._make_card(
+        bx_card, self._bx_bal_var, self._bx_pnl_var, self._bx_pnl_lbl = self._make_card(
             row,
             icon="🔮",
             title="BingX Futures",
@@ -249,21 +251,21 @@ class HomeScreen(tk.Frame):
             command=self.on_bingx,
             btn_label="Abrir BingX  ▶",
         )
-        bingx_card.pack(side=tk.LEFT, padx=18)
+        bx_card.pack(side=tk.LEFT, padx=18)
 
     def _make_card(self, parent, icon, title, subtitle, accent, features, command, btn_label):
-        """Crea una tarjeta de plataforma con hover effect."""
-        card = tk.Frame(parent, bg=BG_PANEL, width=340, height=340)
+        """Crea una tarjeta de plataforma con hover effect y sección de balance/PnL."""
+        card = tk.Frame(parent, bg=BG_PANEL, width=340, height=400)
         card.pack_propagate(False)
 
         # Borde de color superior
         tk.Frame(card, bg=accent, height=4).pack(fill=tk.X)
 
         inner = tk.Frame(card, bg=BG_PANEL)
-        inner.pack(fill=tk.BOTH, expand=True, padx=26, pady=18)
+        inner.pack(fill=tk.BOTH, expand=True, padx=26, pady=12)
 
-        lbl_icon = tk.Label(inner, text=icon, bg=BG_PANEL, font=("Segoe UI", 42))
-        lbl_icon.pack(pady=(4, 6))
+        lbl_icon = tk.Label(inner, text=icon, bg=BG_PANEL, font=("Segoe UI", 36))
+        lbl_icon.pack(pady=(2, 4))
 
         lbl_title = tk.Label(inner, text=title, bg=BG_PANEL, fg=FG_TEXT,
                              font=("Segoe UI", 18, "bold"))
@@ -271,7 +273,7 @@ class HomeScreen(tk.Frame):
 
         lbl_sub = tk.Label(inner, text=subtitle, bg=BG_PANEL, fg=FG_MUTED,
                            font=("Segoe UI", 10))
-        lbl_sub.pack(pady=(2, 10))
+        lbl_sub.pack(pady=(2, 8))
 
         feat_frames = []
         for f in features:
@@ -293,15 +295,35 @@ class HomeScreen(tk.Frame):
             activebackground=self._darken(accent),
             activeforeground="white",
         )
-        btn.pack(pady=(14, 4), fill=tk.X)
+        btn.pack(pady=(12, 6), fill=tk.X)
+
+        # ── Sección de balance / PnL ─────────────────────────────────────────
+        bal_frame = tk.Frame(inner, bg=BG_WIDGET, pady=4)
+        bal_frame.pack(fill=tk.X)
+
+        bal_var = tk.StringVar(value="Balance: —")
+        tk.Label(
+            bal_frame, textvariable=bal_var,
+            bg=BG_WIDGET, fg=FG_MUTED,
+            font=("Consolas", 9),
+        ).pack()
+
+        pnl_var = tk.StringVar(value="")
+        pnl_lbl = tk.Label(
+            bal_frame, textvariable=pnl_var,
+            bg=BG_WIDGET, fg=C_GREEN,
+            font=("Consolas", 10, "bold"),
+        )
+        pnl_lbl.pack()
 
         # Recolectar todos los widgets para el hover
-        all_bg = [card, inner, lbl_icon, lbl_title, lbl_sub] + \
-                 [w for ff, d, t in feat_frames for w in (ff, d, t)]
+        all_bg_panel  = [card, inner, lbl_icon, lbl_title, lbl_sub] + \
+                        [w for ff, d, t in feat_frames for w in (ff, d, t)]
+        all_bg_widget = [bal_frame, pnl_lbl]
 
         def on_enter(_e):
             card.configure(bg=BG_WIDGET)
-            for w in all_bg:
+            for w in all_bg_panel:
                 try:
                     w.configure(bg=BG_WIDGET)
                 except Exception:
@@ -309,7 +331,7 @@ class HomeScreen(tk.Frame):
 
         def on_leave(_e):
             card.configure(bg=BG_PANEL)
-            for w in all_bg:
+            for w in all_bg_panel:
                 try:
                     w.configure(bg=BG_PANEL)
                 except Exception:
@@ -320,7 +342,7 @@ class HomeScreen(tk.Frame):
         card.bind("<Leave>", on_leave)
         inner.bind("<Leave>", on_leave)
 
-        return card
+        return card, bal_var, pnl_var, pnl_lbl
 
     # ──────────────────────────────────────────
     # Fila de estado
@@ -397,7 +419,8 @@ class HomeScreen(tk.Frame):
 
     def _check_statuses(self):
         """Revisar estado de MT5 y BingX periódicamente."""
-        # MT5
+        # ── MT5 ───────────────────────────────────────────────────────────────
+        mt5_bal, mt5_pnl, mt5_pnl_color = "—", "", C_GREEN
         try:
             if os.path.exists(MT5_STATUS_FILE):
                 with open(MT5_STATUS_FILE, "r") as f:
@@ -406,6 +429,19 @@ class HomeScreen(tk.Frame):
                     mt5_color, mt5_txt = C_GREEN, "MT5: activo"
                 else:
                     mt5_color, mt5_txt = C_YELLOW, "MT5: detenido"
+                # Balance opcional en el archivo de estado
+                bal = data.get("balance")
+                pnl = data.get("daily_pnl")
+                if bal is not None:
+                    mt5_bal = f"Balance: ${float(bal):,.2f}"
+                if pnl is not None:
+                    pnl_f = float(pnl)
+                    if pnl_f >= 0:
+                        mt5_pnl = f"▲ +${pnl_f:,.2f} hoy"
+                        mt5_pnl_color = C_GREEN
+                    else:
+                        mt5_pnl = f"▼ -${abs(pnl_f):,.2f} hoy"
+                        mt5_pnl_color = C_RED
             else:
                 mt5_color, mt5_txt = "#555", "MT5: —"
         except Exception:
@@ -413,27 +449,64 @@ class HomeScreen(tk.Frame):
 
         self.mt5_status_canvas.itemconfig(self.mt5_status_oval, fill=mt5_color)
         self.mt5_status_lbl.configure(text=mt5_txt)
+        self._mt5_bal_var.set(mt5_bal)
+        if mt5_pnl:
+            self._mt5_pnl_var.set(mt5_pnl)
+            self._mt5_pnl_lbl.configure(fg=mt5_pnl_color)
 
-        # BingX
+        # ── BingX ─────────────────────────────────────────────────────────────
+        bx_bal, bx_pnl, bx_pnl_color = "—", "", C_GREEN
         try:
-            if os.path.exists(BINGX_CFG_FILE):
+            # 1. Leer estado del bot (running, balance, daily_pnl)
+            if os.path.exists(BINGX_STATUS_FILE):
+                with open(BINGX_STATUS_FILE, "r") as f:
+                    bx_data = json.load(f)
+                running   = bx_data.get("running", False)
+                connected = bx_data.get("connected", False)
+                bal       = bx_data.get("balance")
+                pnl       = bx_data.get("daily_pnl", 0)
+
+                if running:
+                    bx_color, bx_txt = C_GREEN,  "BingX: activo"
+                elif connected:
+                    bx_color, bx_txt = C_BLUE,   "BingX: conectado"
+                else:
+                    bx_color, bx_txt = C_YELLOW, "BingX: configurado"
+
+                if bal is not None:
+                    bx_bal = f"Balance: ${float(bal):,.2f} USDT"
+                pnl_f = float(pnl)
+                if pnl_f > 0:
+                    bx_pnl = f"▲ +${pnl_f:,.2f} hoy"
+                    bx_pnl_color = C_GREEN
+                elif pnl_f < 0:
+                    bx_pnl = f"▼ -${abs(pnl_f):,.2f} hoy"
+                    bx_pnl_color = C_RED
+                else:
+                    bx_pnl = "$0.00 hoy"
+                    bx_pnl_color = FG_MUTED
+
+            elif os.path.exists(BINGX_CFG_FILE):
+                # 2. No hay estado → verificar si al menos hay API configurada
                 with open(BINGX_CFG_FILE, "r") as f:
                     data = json.load(f)
                 has_api = bool(data.get("api_key") and data.get("api_secret"))
-                demo    = data.get("demo_mode", True)
-                if has_api and not demo:
-                    bx_color, bx_txt = C_GREEN, "BingX: real"
-                elif has_api and demo:
-                    bx_color, bx_txt = C_YELLOW, "BingX: demo"
+                if has_api:
+                    bx_color, bx_txt = C_YELLOW, "BingX: configurado"
                 else:
                     bx_color, bx_txt = C_ORANGE, "BingX: sin API"
             else:
                 bx_color, bx_txt = "#555", "BingX: sin configurar"
+
         except Exception:
             bx_color, bx_txt = "#555", "BingX: —"
 
         self.bx_status_canvas.itemconfig(self.bx_status_oval, fill=bx_color)
         self.bx_status_lbl.configure(text=bx_txt)
+        self._bx_bal_var.set(bx_bal)
+        if bx_pnl:
+            self._bx_pnl_var.set(bx_pnl)
+            self._bx_pnl_lbl.configure(fg=bx_pnl_color)
 
         self.after(5000, self._check_statuses)
 

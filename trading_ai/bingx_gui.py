@@ -2,12 +2,13 @@
 bingx_gui.py — Panel completo de BingX Perpetual Futures (REAL, sin demo)
 
 Tabs:
-  1. Dashboard  — Estado de conexión + datos de cuenta + controles del bot
-  2. Posiciones — Posiciones abiertas en tiempo real desde la API
-  3. Estadísticas — Métricas acumuladas de rendimiento
-  4. Historial   — Historial de trades locales
-  5. Config      — API Key, parámetros de trading y bot
-  6. Sistema     — Info técnica y diagnóstico
+  1. Dashboard     — Stats de cuenta + mercado + controles del bot (estilo MT5)
+  2. Posiciones    — Posiciones abiertas en tiempo real desde la API
+  3. Estadísticas  — Métricas acumuladas de rendimiento
+  4. Historial     — Historial de trades locales
+  5. Aprendizaje   — Sistema de aprendizaje y análisis de rendimiento
+  6. Configuración — Parámetros de estrategia y operación
+  7. Sistema       — Info técnica y diagnóstico
 """
 
 import json
@@ -51,12 +52,14 @@ C_PURPLE  = "#7b5ea7"
 # ──────────────────────────────────────────────────────────────────────────────
 # Rutas de archivos
 # ──────────────────────────────────────────────────────────────────────────────
-_DIR          = os.path.dirname(os.path.abspath(__file__))
-BINGX_CFG     = os.path.join(_DIR, "bingx_config.json")
-BINGX_STATS   = os.path.join(_DIR, "bingx_stats.json")
-BINGX_HISTORY = os.path.join(_DIR, "bingx_history.json")
+_DIR           = os.path.dirname(os.path.abspath(__file__))
+BINGX_CFG      = os.path.join(_DIR, "bingx_config.json")
+BINGX_STATS    = os.path.join(_DIR, "bingx_stats.json")
+BINGX_HISTORY  = os.path.join(_DIR, "bingx_history.json")
+BINGX_STATUS   = os.path.join(_DIR, "bingx_status.json")
 
 BINGX_DEFAULTS = {
+    # Credenciales (gestionadas en Settings global)
     "api_key":          "",
     "api_secret":       "",
     "default_symbol":   "BTC-USDT",
@@ -64,10 +67,19 @@ BINGX_DEFAULTS = {
     "margin_type":      "ISOLATED",
     "risk_percent":     1.0,
     "max_positions":    3,
-    "min_confidence":   30,
-    "cooldown":         60,
     "max_daily_trades": 20,
     "max_losses":       3,
+    # Estrategia (gestionados en pestaña Configuración del bot)
+    "timeframe":        "15m",
+    "ema_short":        9,
+    "ema_long":         21,
+    "rsi_period":       14,
+    "rsi_overbought":   70,
+    "rsi_oversold":     30,
+    "atr_sl_mult":      1.5,
+    "atr_tp_mult":      3.0,
+    "cooldown":         60,
+    "min_confidence":   30,
 }
 
 STATS_DEFAULTS = {
@@ -212,6 +224,7 @@ class BingXPanel(tk.Frame):
         self._build_tab_positions()
         self._build_tab_stats()
         self._build_tab_history()
+        self._build_tab_learning()
         self._build_tab_config()
         self._build_tab_system()
 
@@ -219,129 +232,236 @@ class BingXPanel(tk.Frame):
     # TAB 1 — Dashboard
     # ══════════════════════════════════════════════════════════════════════════
 
+    def _make_stat_box(self, parent, label, value="—", color=None):
+        """Crea un bloque de estadística 2x2 al estilo MT5."""
+        f = tk.Frame(parent, bg=BG_WIDGET, padx=10, pady=8)
+        tk.Label(f, text=label, bg=BG_WIDGET, fg=FG_MUTED,
+                 font=("Consolas", 8)).pack(anchor="w")
+        var = tk.StringVar(value=value)
+        tk.Label(f, textvariable=var, bg=BG_WIDGET, fg=color or FG_TEXT,
+                 font=("Consolas", 17, "bold")).pack(anchor="w")
+        return f, var
+
     def _build_tab_dashboard(self):
         tab = tk.Frame(self._nb, bg=BG_DARK)
         self._nb.add(tab, text="  Dashboard  ")
 
-        left  = tk.Frame(tab, bg=BG_DARK)
-        right = tk.Frame(tab, bg=BG_DARK)
-        left.pack(side="left",  fill="both", expand=True, padx=(8, 4), pady=8)
-        right.pack(side="right", fill="both", expand=True, padx=(4, 8), pady=8)
+        # ══════════════════════════════════════════════════════════════════════
+        # HEADER — conexión + bot + controles
+        # ══════════════════════════════════════════════════════════════════════
+        header = tk.Frame(tab, bg=BG_PANEL, height=110)
+        header.pack(fill="x")
+        header.pack_propagate(False)
+        tk.Frame(header, bg=C_ORANGE, height=2).pack(fill="x", side="bottom")
 
-        # ── Panel cuenta ─────────────────────────────────────────────────────
-        acc = tk.LabelFrame(
-            left, text=" CUENTA ",
-            bg=BG_PANEL, fg=C_BLUE,
-            font=("Consolas", 9, "bold"), bd=1, relief="solid",
-        )
-        acc.pack(fill="x", pady=(0, 6))
+        # ── Bloque izquierdo: estado de conexión ──
+        conn_blk = tk.Frame(header, bg=BG_PANEL)
+        conn_blk.pack(side="left", padx=20, pady=10)
 
-        conn_row = tk.Frame(acc, bg=BG_PANEL)
-        conn_row.pack(fill="x", padx=12, pady=(10, 4))
+        conn_top = tk.Frame(conn_blk, bg=BG_PANEL)
+        conn_top.pack(anchor="w")
 
-        self._big_dot    = tk.Label(conn_row, text="●", bg=BG_PANEL, fg=C_RED,  font=("Consolas", 18))
+        self._big_dot    = tk.Label(conn_top, text="●", bg=BG_PANEL, fg=C_RED, font=("Consolas", 22))
         self._big_dot.pack(side="left")
-        self._big_status = tk.Label(conn_row, text="DESCONECTADO", bg=BG_PANEL, fg=C_RED, font=("Consolas", 11, "bold"))
+        self._big_status = tk.Label(conn_top, text="DESCONECTADO", bg=BG_PANEL, fg=C_RED,
+                                    font=("Consolas", 13, "bold"))
         self._big_status.pack(side="left", padx=8)
 
+        conn_bot = tk.Frame(conn_blk, bg=BG_PANEL)
+        conn_bot.pack(anchor="w", pady=(6, 0))
+
         self._reconnect_btn = tk.Button(
-            conn_row, text="Conectar",
+            conn_bot, text="Conectar API",
             bg=C_BLUE, fg="white",
             font=("Consolas", 9, "bold"), bd=0,
             padx=12, pady=4, cursor="hand2", relief="flat",
             command=self._connect_api,
         )
-        self._reconnect_btn.pack(side="right", padx=4)
+        self._reconnect_btn.pack(side="left")
 
-        grid = tk.Frame(acc, bg=BG_PANEL)
-        grid.pack(fill="x", padx=12, pady=(4, 10))
+        self._v_uid    = tk.StringVar(value="UID: —")
+        self._v_conn_t = tk.StringVar(value="")
+        tk.Label(conn_bot, textvariable=self._v_uid,
+                 bg=BG_PANEL, fg=FG_MUTED, font=("Consolas", 9)).pack(side="left", padx=12)
+        tk.Label(conn_bot, textvariable=self._v_conn_t,
+                 bg=BG_PANEL, fg=FG_MUTED, font=("Consolas", 8)).pack(side="left")
 
-        self._v_uid    = _info_row(grid, 0, "UID:")
-        self._v_bal    = _info_row(grid, 1, "Balance:",          value_fg=C_GREEN)
-        self._v_equity = _info_row(grid, 2, "Equity:")
-        self._v_avail  = _info_row(grid, 3, "Margen disponible:")
-        self._v_upnl   = _info_row(grid, 4, "PnL no realizado:", value_fg=C_YELLOW)
-        self._v_margin = _info_row(grid, 5, "Margen usado:")
-        self._v_conn_t = _info_row(grid, 6, "Conectado a las:")
+        # ── Separador central ──
+        tk.Frame(header, bg=BG_WIDGET, width=1).pack(side="left", fill="y", pady=16)
 
-        # ── Panel mercado ─────────────────────────────────────────────────────
-        mkt = tk.LabelFrame(
-            left, text=" MERCADO ",
-            bg=BG_PANEL, fg=C_ORANGE,
-            font=("Consolas", 9, "bold"), bd=1, relief="solid",
-        )
-        mkt.pack(fill="x", pady=(0, 6))
+        # ── Bloque central: bot ──
+        bot_blk = tk.Frame(header, bg=BG_PANEL)
+        bot_blk.pack(side="left", padx=20, pady=10)
 
-        mg = tk.Frame(mkt, bg=BG_PANEL)
-        mg.pack(fill="x", padx=12, pady=8)
-        self._v_symbol  = _info_row(mg, 0, "Símbolo:")
-        self._v_price   = _info_row(mg, 1, "Precio:",        value_fg=C_BLUE)
-        self._v_change  = _info_row(mg, 2, "Cambio 24h:")
-        self._v_vol24   = _info_row(mg, 3, "Volumen 24h:")
-        self._v_funding = _info_row(mg, 4, "Financiamiento:")
-
-        # ── Panel bot ─────────────────────────────────────────────────────────
-        bot_frame = tk.LabelFrame(
-            right, text=" BOT ",
-            bg=BG_PANEL, fg=C_GREEN,
-            font=("Consolas", 9, "bold"), bd=1, relief="solid",
-        )
-        bot_frame.pack(fill="x", pady=(0, 6))
-
-        sr = tk.Frame(bot_frame, bg=BG_PANEL)
-        sr.pack(fill="x", padx=12, pady=(10, 4))
-        self._bot_dot = tk.Label(sr, text="●", bg=BG_PANEL, fg=C_RED, font=("Consolas", 18))
+        bot_top = tk.Frame(bot_blk, bg=BG_PANEL)
+        bot_top.pack(anchor="w")
+        self._bot_dot = tk.Label(bot_top, text="●", bg=BG_PANEL, fg=C_RED, font=("Consolas", 22))
         self._bot_dot.pack(side="left")
-        self._bot_lbl = tk.Label(sr, text="DETENIDO", bg=BG_PANEL, fg=C_RED, font=("Consolas", 11, "bold"))
+        self._bot_lbl = tk.Label(bot_top, text="DETENIDO", bg=BG_PANEL, fg=C_RED,
+                                 font=("Consolas", 13, "bold"))
         self._bot_lbl.pack(side="left", padx=8)
 
-        br = tk.Frame(bot_frame, bg=BG_PANEL)
-        br.pack(fill="x", padx=12, pady=(4, 10))
+        bot_bot = tk.Frame(bot_blk, bg=BG_PANEL)
+        bot_bot.pack(anchor="w", pady=(6, 0))
 
         self._start_btn = tk.Button(
-            br, text="▶  INICIAR BOT",
+            bot_bot, text="▶  INICIAR BOT",
             bg=BG_WIDGET, fg=FG_MUTED,
             font=("Consolas", 10, "bold"), bd=0,
-            padx=16, pady=8, cursor="hand2", relief="flat",
+            padx=14, pady=5, cursor="hand2", relief="flat",
             command=self._start_bot, state="disabled",
         )
-        self._start_btn.pack(side="left", padx=(0, 8))
+        self._start_btn.pack(side="left", padx=(0, 6))
 
         self._stop_btn = tk.Button(
-            br, text="◼  DETENER",
+            bot_bot, text="◼  DETENER",
             bg=BG_WIDGET, fg=FG_MUTED,
             font=("Consolas", 10, "bold"), bd=0,
-            padx=16, pady=8, cursor="hand2", relief="flat",
+            padx=14, pady=5, cursor="hand2", relief="flat",
             command=self._stop_bot, state="disabled",
         )
         self._stop_btn.pack(side="left")
 
-        binfo = tk.Frame(bot_frame, bg=BG_PANEL)
-        binfo.pack(fill="x", padx=12, pady=(0, 10))
-        self._v_sym_bot  = _info_row(binfo, 0, "Símbolo:")
-        self._v_lev_bot  = _info_row(binfo, 1, "Apalancamiento:")
-        self._v_risk_bot = _info_row(binfo, 2, "Riesgo/trade:")
-        self._v_signal   = _info_row(binfo, 3, "Última señal:", value_fg=C_YELLOW)
-        self._v_trades_d = _info_row(binfo, 4, "Trades hoy:")
+        # ── Separador ──
+        tk.Frame(header, bg=BG_WIDGET, width=1).pack(side="left", fill="y", pady=16)
 
-        # ── Log ───────────────────────────────────────────────────────────────
-        log_frame = tk.LabelFrame(
-            right, text=" LOG ",
-            bg=BG_PANEL, fg=FG_MUTED,
-            font=("Consolas", 9, "bold"), bd=1, relief="solid",
+        # ── Bloque derecho: info de bot ──
+        info_blk = tk.Frame(header, bg=BG_PANEL)
+        info_blk.pack(side="left", padx=20, pady=12, fill="y")
+
+        ig = tk.Frame(info_blk, bg=BG_PANEL)
+        ig.pack(expand=True)
+        self._v_sym_bot  = _info_row(ig, 0, "Símbolo:")
+        self._v_lev_bot  = _info_row(ig, 1, "Apalancamiento:")
+        self._v_risk_bot = _info_row(ig, 2, "Riesgo/trade:")
+        self._v_trades_d = _info_row(ig, 3, "Trades hoy:")
+
+        # ── Última señal (header derecha) ──
+        sig_blk = tk.Frame(header, bg=BG_PANEL)
+        sig_blk.pack(side="right", padx=20, pady=12)
+        tk.Label(sig_blk, text="ÚLTIMA SEÑAL", bg=BG_PANEL, fg=FG_MUTED,
+                 font=("Consolas", 8)).pack(anchor="e")
+        self._v_signal = tk.StringVar(value="—")
+        tk.Label(sig_blk, textvariable=self._v_signal, bg=BG_PANEL, fg=C_YELLOW,
+                 font=("Consolas", 11, "bold")).pack(anchor="e")
+
+        # ══════════════════════════════════════════════════════════════════════
+        # MAIN — panel izquierdo + log derecho
+        # ══════════════════════════════════════════════════════════════════════
+        main = tk.Frame(tab, bg=BG_DARK)
+        main.pack(fill="both", expand=True, padx=8, pady=6)
+
+        # ── Panel izquierdo (ancho fijo 430px) ──
+        left = tk.Frame(main, bg=BG_DARK, width=430)
+        left.pack(side="left", fill="y", padx=(0, 6))
+        left.pack_propagate(False)
+
+        # ┌ Stats de cuenta 2×2 ──────────────────────────────────────────────┐
+        acc_lf = tk.LabelFrame(left, text=" ▦ CUENTA ",
+                               bg=BG_PANEL, fg=C_BLUE,
+                               font=("Consolas", 9, "bold"), bd=1, relief="solid")
+        acc_lf.pack(fill="x", pady=(0, 4))
+
+        acc_grid = tk.Frame(acc_lf, bg=BG_PANEL)
+        acc_grid.pack(fill="x", padx=8, pady=6)
+        acc_grid.columnconfigure(0, weight=1)
+        acc_grid.columnconfigure(1, weight=1)
+
+        bx0, self._v_bal    = self._make_stat_box(acc_grid, "Balance (USDT)",    color=C_GREEN)
+        bx1, self._v_equity = self._make_stat_box(acc_grid, "Equity (USDT)")
+        bx2, self._v_avail  = self._make_stat_box(acc_grid, "Margen disponible")
+        bx3, self._v_upnl   = self._make_stat_box(acc_grid, "PnL no realizado",  color=C_YELLOW)
+        bx0.grid(row=0, column=0, sticky="ew", padx=(0, 4), pady=(0, 4))
+        bx1.grid(row=0, column=1, sticky="ew", pady=(0, 4))
+        bx2.grid(row=1, column=0, sticky="ew", padx=(0, 4))
+        bx3.grid(row=1, column=1, sticky="ew")
+
+        # ┌ Stats de trading 2×2 ─────────────────────────────────────────────┐
+        trd_lf = tk.LabelFrame(left, text=" ▦ ESTADÍSTICAS RÁPIDAS ",
+                               bg=BG_PANEL, fg=C_BLUE,
+                               font=("Consolas", 9, "bold"), bd=1, relief="solid")
+        trd_lf.pack(fill="x", pady=(0, 4))
+
+        trd_grid = tk.Frame(trd_lf, bg=BG_PANEL)
+        trd_grid.pack(fill="x", padx=8, pady=6)
+        trd_grid.columnconfigure(0, weight=1)
+        trd_grid.columnconfigure(1, weight=1)
+
+        bt0, self._sv_trades = self._make_stat_box(trd_grid, "Total Trades",   color=C_BLUE)
+        bt1, self._sv_wins   = self._make_stat_box(trd_grid, "Ganadas",        color=C_GREEN)
+        bt2, self._sv_losses = self._make_stat_box(trd_grid, "Perdidas",       color=C_RED)
+        bt3, self._sv_wr     = self._make_stat_box(trd_grid, "Win Rate",       color=C_YELLOW)
+        bt0.grid(row=0, column=0, sticky="ew", padx=(0, 4), pady=(0, 4))
+        bt1.grid(row=0, column=1, sticky="ew", pady=(0, 4))
+        bt2.grid(row=1, column=0, sticky="ew", padx=(0, 4))
+        bt3.grid(row=1, column=1, sticky="ew")
+
+        # Inicializar stats
+        self._sv_trades.set(str(self.stats.get("total_trades", 0)))
+        self._sv_wins.set(str(self.stats.get("wins", 0)))
+        self._sv_losses.set(str(self.stats.get("losses", 0)))
+        self._sv_wr.set(f"{self.stats.get('win_rate', 0):.1f}%")
+
+        # ┌ Mercado actual ────────────────────────────────────────────────────┐
+        mkt_lf = tk.LabelFrame(left, text=" ◐ MERCADO ACTUAL ",
+                               bg=BG_PANEL, fg=C_ORANGE,
+                               font=("Consolas", 9, "bold"), bd=1, relief="solid")
+        mkt_lf.pack(fill="x", pady=(0, 4))
+
+        mg = tk.Frame(mkt_lf, bg=BG_PANEL)
+        mg.pack(fill="x", padx=12, pady=6)
+        self._v_symbol  = _info_row(mg, 0, "Símbolo:")
+        self._v_price   = _info_row(mg, 1, "Precio:",      value_fg=C_BLUE)
+        self._v_change  = _info_row(mg, 2, "Cambio 24h:")
+        self._v_vol24   = _info_row(mg, 3, "Volumen 24h:")
+        self._v_funding = _info_row(mg, 4, "Financiamiento:")
+        self._v_margin  = _info_row(mg, 5, "Margen usado:")
+
+        # ┌ Última señal (texto) ──────────────────────────────────────────────┐
+        sig_lf = tk.LabelFrame(left, text=" ◉ ÚLTIMA SEÑAL ",
+                               bg=BG_PANEL, fg=C_GREEN,
+                               font=("Consolas", 9, "bold"), bd=1, relief="solid")
+        sig_lf.pack(fill="both", expand=True, pady=(0, 0))
+
+        self._sig_text = tk.Text(
+            sig_lf, bg=BG_WIDGET, fg=FG_TEXT,
+            font=("Consolas", 9), height=5,
+            state="disabled", bd=0, padx=6, pady=4, wrap="word",
         )
-        log_frame.pack(fill="both", expand=True, pady=(0, 6))
+        self._sig_text.pack(fill="both", expand=True, padx=8, pady=6)
+
+        # ── Panel derecho: log ───────────────────────────────────────────────
+        right = tk.Frame(main, bg=BG_DARK)
+        right.pack(side="right", fill="both", expand=True)
+
+        log_lf = tk.LabelFrame(right, text=" ▤ LOGS DEL SISTEMA ",
+                               bg=BG_PANEL, fg=FG_MUTED,
+                               font=("Consolas", 9, "bold"), bd=1, relief="solid")
+        log_lf.pack(fill="both", expand=True)
+
+        log_tb = tk.Frame(log_lf, bg=BG_PANEL, height=28)
+        log_tb.pack(fill="x", padx=8, pady=(4, 0))
+        log_tb.pack_propagate(False)
+
+        tk.Button(
+            log_tb, text="× Limpiar",
+            bg=C_RED, fg="white",
+            font=("Consolas", 8, "bold"), bd=0,
+            padx=8, pady=2, cursor="hand2", relief="flat",
+            command=self._clear_log,
+        ).pack(side="right")
 
         self._log_widget = tk.Text(
-            log_frame,
-            bg=BG_DARK, fg=FG_TEXT,
-            font=("Consolas", 8),
-            state="disabled", wrap="word", bd=0, padx=4, pady=4,
+            log_lf,
+            bg=BG_WIDGET, fg=C_GREEN,
+            font=("Consolas", 9),
+            state="disabled", wrap="word", bd=0, padx=6, pady=6,
+            height=25,
         )
-        vsb = ttk.Scrollbar(log_frame, command=self._log_widget.yview)
+        vsb = ttk.Scrollbar(log_lf, command=self._log_widget.yview)
         self._log_widget.configure(yscrollcommand=vsb.set)
         vsb.pack(side="right", fill="y")
-        self._log_widget.pack(fill="both", expand=True)
+        self._log_widget.pack(fill="both", expand=True, padx=(8, 0), pady=(2, 8))
 
         for tag, color in [
             ("ok",    C_GREEN),  ("err",   C_RED),
@@ -349,6 +469,11 @@ class BingXPanel(tk.Frame):
             ("dim",   FG_MUTED), ("trade", C_ORANGE),
         ]:
             self._log_widget.tag_configure(tag, foreground=color)
+
+    def _clear_log(self):
+        self._log_widget.config(state="normal")
+        self._log_widget.delete("1.0", "end")
+        self._log_widget.config(state="disabled")
 
     # ══════════════════════════════════════════════════════════════════════════
     # TAB 2 — Posiciones
@@ -526,6 +651,230 @@ class BingXPanel(tk.Frame):
     # TAB 5 — Configuración
     # ══════════════════════════════════════════════════════════════════════════
 
+    def _build_tab_learning(self):
+        """Sistema de aprendizaje — analiza el historial para mostrar insights."""
+        tab = tk.Frame(self._nb, bg=BG_DARK)
+        self._nb.add(tab, text="  Aprendizaje  ")
+
+        # Toolbar
+        tb = tk.Frame(tab, bg=BG_PANEL, height=36)
+        tb.pack(fill="x", padx=8, pady=(8, 0))
+        tb.pack_propagate(False)
+        tk.Label(tb, text="⚙  Sistema de Aprendizaje Adaptativo",
+                 bg=BG_PANEL, fg=C_BLUE, font=("Consolas", 9, "bold")).pack(side="left", padx=10, pady=8)
+        tk.Button(
+            tb, text="↻  Analizar",
+            bg=C_BLUE, fg="white",
+            font=("Consolas", 9, "bold"), bd=0,
+            padx=12, pady=4, cursor="hand2", relief="flat",
+            command=self._run_learning_analysis,
+        ).pack(side="right", padx=8, pady=6)
+
+        # Contenido en dos columnas
+        main = tk.Frame(tab, bg=BG_DARK)
+        main.pack(fill="both", expand=True, padx=8, pady=6)
+
+        left = tk.Frame(main, bg=BG_DARK)
+        right = tk.Frame(main, bg=BG_DARK)
+        left.pack(side="left", fill="both", expand=True, padx=(0, 4))
+        right.pack(side="right", fill="both", expand=True, padx=(4, 0))
+
+        # ── Panel de rendimiento por señal ────────────────────────────────────
+        sig_f = tk.LabelFrame(left, text=" RENDIMIENTO POR SEÑAL ",
+                              bg=BG_PANEL, fg=C_ORANGE,
+                              font=("Consolas", 9, "bold"), bd=1, relief="solid")
+        sig_f.pack(fill="x", pady=(0, 6))
+
+        sg = tk.Frame(sig_f, bg=BG_PANEL)
+        sg.pack(fill="x", padx=12, pady=8)
+        self._lv = {}
+        for i, (key, lbl) in enumerate([
+            ("buy_trades",    "Trades LONG:"),
+            ("buy_wr",        "Win Rate LONG:"),
+            ("buy_pnl",       "PnL LONG (USDT):"),
+            ("sell_trades",   "Trades SHORT:"),
+            ("sell_wr",       "Win Rate SHORT:"),
+            ("sell_pnl",      "PnL SHORT (USDT):"),
+        ]):
+            self._lv[key] = _info_row(sg, i, lbl)
+
+        # ── Panel de calidad de señal ─────────────────────────────────────────
+        qa_f = tk.LabelFrame(left, text=" CALIDAD Y ADAPTACIÓN ",
+                             bg=BG_PANEL, fg=C_GREEN,
+                             font=("Consolas", 9, "bold"), bd=1, relief="solid")
+        qa_f.pack(fill="x", pady=(0, 6))
+
+        qg = tk.Frame(qa_f, bg=BG_PANEL)
+        qg.pack(fill="x", padx=12, pady=8)
+        for i, (key, lbl) in enumerate([
+            ("confidence",    "Confianza actual:"),
+            ("best_hour",     "Mejor hora del día:"),
+            ("worst_hour",    "Peor hora del día:"),
+            ("avg_duration",  "Duración media trade:"),
+            ("recommend",     "Recomendación:"),
+        ]):
+            self._lv[key] = _info_row(qg, i, lbl)
+
+        # ── Últimos 10 trades ────────────────────────────────────────────────
+        rec_f = tk.LabelFrame(right, text=" ÚLTIMOS 10 TRADES ",
+                              bg=BG_PANEL, fg=C_BLUE,
+                              font=("Consolas", 9, "bold"), bd=1, relief="solid")
+        rec_f.pack(fill="x", pady=(0, 6))
+
+        cols = ("ts", "dir", "pnl", "result")
+        self._learn_tree = ttk.Treeview(rec_f, columns=cols, show="headings", height=10)
+        self._style_treeview(self._learn_tree)
+        self._learn_tree.tag_configure("WIN",  foreground=C_GREEN)
+        self._learn_tree.tag_configure("LOSS", foreground=C_RED)
+
+        for c, h, w in [
+            ("ts", "Hora", 120), ("dir", "Dirección", 80),
+            ("pnl", "PnL USDT", 90), ("result", "Resultado", 80),
+        ]:
+            self._learn_tree.heading(c, text=h)
+            self._learn_tree.column(c, width=w, anchor="center")
+
+        self._learn_tree.pack(fill="x", padx=8, pady=6)
+
+        # ── Recomendaciones textuales ─────────────────────────────────────────
+        adv_f = tk.LabelFrame(right, text=" ANÁLISIS Y CONSEJOS ",
+                              bg=BG_PANEL, fg=C_PURPLE,
+                              font=("Consolas", 9, "bold"), bd=1, relief="solid")
+        adv_f.pack(fill="both", expand=True, pady=(0, 0))
+
+        self._adv_text = tk.Text(
+            adv_f, bg=BG_DARK, fg=FG_TEXT,
+            font=("Consolas", 9), state="disabled",
+            bd=0, padx=8, pady=6, wrap="word",
+        )
+        self._adv_text.pack(fill="both", expand=True, padx=8, pady=6)
+
+        self._run_learning_analysis()
+
+    def _run_learning_analysis(self):
+        """Analiza el historial y actualiza el panel de aprendizaje."""
+        history = []
+        if os.path.exists(BINGX_HISTORY):
+            try:
+                with open(BINGX_HISTORY, "r", encoding="utf-8") as f:
+                    history = json.load(f)
+            except Exception:
+                pass
+
+        if not isinstance(history, list):
+            history = []
+
+        closed = [t for t in history if t.get("result") in ("WIN", "LOSS")]
+
+        # Análisis por señal
+        buy  = [t for t in closed if t.get("direction") == "LONG"]
+        sell = [t for t in closed if t.get("direction") == "SHORT"]
+
+        def _stats(lst):
+            if not lst:
+                return 0, 0.0, 0.0
+            wins    = sum(1 for t in lst if t.get("result") == "WIN")
+            wr      = wins / len(lst) * 100
+            pnl_sum = sum(float(t.get("pnl", 0)) for t in lst)
+            return len(lst), wr, pnl_sum
+
+        bn, bwr, bpnl = _stats(buy)
+        sn, swr, spnl = _stats(sell)
+
+        self._lv["buy_trades"].set(str(bn))
+        self._lv["buy_wr"].set(f"{bwr:.1f}%")
+        self._lv["buy_pnl"].set(f"{bpnl:+.4f}")
+        self._lv["sell_trades"].set(str(sn))
+        self._lv["sell_wr"].set(f"{swr:.1f}%")
+        self._lv["sell_pnl"].set(f"{spnl:+.4f}")
+
+        # Calidad y adaptación
+        total_wr = self.stats.get("win_rate", 0)
+        if total_wr >= 60:
+            conf, recommend = "Alta (>60%)", "Mantener configuración actual"
+        elif total_wr >= 45:
+            conf, recommend = "Media (45-60%)", "Ajustar umbrales RSI"
+        else:
+            conf, recommend = "Baja (<45%)", "Revisar timeframe y ATR mult"
+
+        self._lv["confidence"].set(conf)
+        self._lv["recommend"].set(recommend)
+
+        # Mejor/peor hora
+        if closed:
+            from collections import defaultdict
+            hours = defaultdict(list)
+            for t in closed:
+                try:
+                    h = datetime.strptime(t.get("timestamp", ""), "%Y-%m-%d %H:%M:%S").hour
+                    hours[h].append(1 if t.get("result") == "WIN" else 0)
+                except Exception:
+                    pass
+            if hours:
+                best  = max(hours, key=lambda h: sum(hours[h]) / len(hours[h]))
+                worst = min(hours, key=lambda h: sum(hours[h]) / len(hours[h]))
+                self._lv["best_hour"].set(f"{best:02d}:00h")
+                self._lv["worst_hour"].set(f"{worst:02d}:00h")
+        else:
+            self._lv["best_hour"].set("—")
+            self._lv["worst_hour"].set("—")
+
+        self._lv["avg_duration"].set("—")
+
+        # Últimos 10 trades
+        for row in self._learn_tree.get_children():
+            self._learn_tree.delete(row)
+
+        for t in list(reversed(history))[:10]:
+            result = t.get("result", "—")
+            pnl    = t.get("pnl", 0)
+            ts_raw = t.get("timestamp", "—")
+            try:
+                ts = datetime.strptime(ts_raw, "%Y-%m-%d %H:%M:%S").strftime("%H:%M:%S")
+            except Exception:
+                ts = ts_raw
+            self._learn_tree.insert("", "end", values=(
+                ts,
+                t.get("direction", "—"),
+                f"{float(pnl):+.4f}" if isinstance(pnl, (int, float)) else "—",
+                result,
+            ), tags=(result,))
+
+        # Consejos
+        lines = ["=== Análisis Automático ===\n"]
+        if not closed:
+            lines.append("Sin trades cerrados aún. Inicia el bot para generar datos.")
+        else:
+            total = len(closed)
+            wins  = sum(1 for t in closed if t.get("result") == "WIN")
+            wr    = wins / total * 100
+            lines.append(f"Total trades cerrados: {total}")
+            lines.append(f"Win rate general: {wr:.1f}%\n")
+
+            if bn > 0 and sn > 0:
+                if bwr > swr + 10:
+                    lines.append("💡 Las señales LONG tienen mejor rendimiento.")
+                    lines.append("   Considera aumentar el umbral RSI bajista.")
+                elif swr > bwr + 10:
+                    lines.append("💡 Las señales SHORT tienen mejor rendimiento.")
+                    lines.append("   Considera aumentar el umbral RSI alcista.")
+                else:
+                    lines.append("✔ LONG y SHORT tienen rendimiento similar.")
+
+            if total_wr < 40:
+                lines.append("\n⚠ Win rate bajo. Sugerencias:")
+                lines.append("  - Aumentar ATR mult SL (reducir SL demasiado ajustado)")
+                lines.append("  - Probar timeframe mayor (1h en vez de 15m)")
+                lines.append("  - Aumentar umbral de RSI en zonas extremas")
+            elif total_wr > 65:
+                lines.append("\n✔ Excelente win rate. El sistema está bien calibrado.")
+
+        advice = "\n".join(lines)
+        self._adv_text.config(state="normal")
+        self._adv_text.delete("1.0", "end")
+        self._adv_text.insert("end", advice)
+        self._adv_text.config(state="disabled")
+
     def _build_tab_config(self):
         tab = tk.Frame(self._nb, bg=BG_DARK)
         self._nb.add(tab, text="  Configuración  ")
@@ -557,7 +906,7 @@ class BingXPanel(tk.Frame):
             f.pack(fill="x", padx=12, pady=(8, 0))
             return f
 
-        def field(parent, row, label, key, show="", tip=""):
+        def field(parent, row, label, key, tip=""):
             tk.Label(
                 parent, text=label,
                 bg=BG_PANEL, fg=FG_MUTED, font=("Consolas", 9), anchor="w",
@@ -565,7 +914,7 @@ class BingXPanel(tk.Frame):
             var = tk.StringVar(value=str(self.cfg.get(key, "")))
             self._cfg_vars[key] = var
             tk.Entry(
-                parent, textvariable=var, show=show,
+                parent, textvariable=var,
                 bg=BG_ENTRY, fg=FG_TEXT, insertbackground=FG_TEXT,
                 font=("Consolas", 9), bd=0, relief="flat",
             ).grid(row=row, column=1, sticky="ew", padx=12, pady=4)
@@ -576,30 +925,44 @@ class BingXPanel(tk.Frame):
                 ).grid(row=row, column=2, sticky="w", padx=4)
             parent.columnconfigure(1, weight=1)
 
-        # API
-        api_f = section("CREDENCIALES API BINGX")
-        field(api_f, 0, "API Key:",    "api_key")
-        field(api_f, 1, "API Secret:", "api_secret", show="*")
+        def combo_field(parent, row, label, key, opts):
+            tk.Label(
+                parent, text=label,
+                bg=BG_PANEL, fg=FG_MUTED, font=("Consolas", 9), anchor="w",
+            ).grid(row=row, column=0, sticky="w", padx=12, pady=4)
+            var = tk.StringVar(value=str(self.cfg.get(key, opts[0])))
+            self._cfg_vars[key] = var
+            cb = ttk.Combobox(parent, textvariable=var, values=opts,
+                              state="readonly", width=14)
+            cb.grid(row=row, column=1, sticky="w", padx=12, pady=4)
+            parent.columnconfigure(1, weight=1)
+
+        # Nota informativa
         tk.Label(
-            api_f,
-            text="Genera tu API Key: BingX → Perfil → Gestión de API",
-            bg=BG_PANEL, fg=FG_MUTED, font=("Consolas", 8, "italic"),
-        ).grid(row=2, columnspan=3, sticky="w", padx=12, pady=(0, 8))
+            inner,
+            text="Los parámetros de API, símbolo, apalancamiento y riesgo se configuran\n"
+                 "en Configuración del Sistema (botón ⚙ en el menú principal).",
+            bg=BG_DARK, fg=FG_MUTED, font=("Consolas", 8, "italic"),
+        ).pack(padx=16, pady=(10, 2), anchor="w")
 
-        # Trading
-        trd_f = section("PARÁMETROS DE TRADING")
-        field(trd_f, 0, "Símbolo:",           "default_symbol",   tip="ej: BTC-USDT, ETH-USDT")
-        field(trd_f, 1, "Apalancamiento:",     "default_leverage", tip="1–125")
-        field(trd_f, 2, "Tipo de margen:",     "margin_type",      tip="ISOLATED | CROSSED")
-        field(trd_f, 3, "Riesgo por trade %:", "risk_percent",     tip="0.1–10.0")
+        # Estrategia
+        est_f = section("ESTRATEGIA  (EMA + RSI + ATR)", C_BLUE)
+        combo_field(est_f, 0, "Timeframe:",         "timeframe",     ["1m","5m","15m","30m","1h","4h","1d"])
+        field(est_f, 1, "EMA periodo corto:",        "ema_short",     "default 9")
+        field(est_f, 2, "EMA periodo largo:",        "ema_long",      "default 21")
+        field(est_f, 3, "Periodo RSI:",              "rsi_period",    "default 14")
+        field(est_f, 4, "RSI sobrecomprado:",        "rsi_overbought","default 70")
+        field(est_f, 5, "RSI sobrevendido:",         "rsi_oversold",  "default 30")
 
-        # Bot
-        bot_f = section("PARÁMETROS DEL BOT")
-        field(bot_f, 0, "Confianza mínima %:", "min_confidence",   tip="0–100")
-        field(bot_f, 1, "Cooldown (seg):",      "cooldown",         tip="10–600")
-        field(bot_f, 2, "Max trades/día:",       "max_daily_trades", tip="1–100")
-        field(bot_f, 3, "Max pérdidas cons.:",   "max_losses",       tip="1–20")
-        field(bot_f, 4, "Max posiciones sim.:",  "max_positions",    tip="1–10")
+        # Gestión de SL/TP
+        sl_f = section("STOP LOSS / TAKE PROFIT  (ATR)", C_ORANGE)
+        field(sl_f, 0, "Mult. SL (× ATR):",  "atr_sl_mult",   "default 1.5")
+        field(sl_f, 1, "Mult. TP (× ATR):",  "atr_tp_mult",   "default 3.0")
+
+        # Operación del bot
+        op_f = section("OPERACIÓN DEL BOT", C_GREEN)
+        field(op_f, 0, "Cooldown (seg):",              "cooldown",         "10–600")
+        field(op_f, 1, "Confianza mínima (0-100):",    "min_confidence",   "0–100")
 
         # Botones
         save_f = tk.Frame(inner, bg=BG_DARK)
@@ -612,15 +975,7 @@ class BingXPanel(tk.Frame):
         ).pack(side="right", padx=12)
 
         tk.Button(
-            save_f, text="Guardar y reconectar",
-            bg=C_GREEN, fg=BG_DARK,
-            font=("Consolas", 10, "bold"), bd=0,
-            padx=20, pady=8, cursor="hand2", relief="flat",
-            command=self._save_and_reconnect,
-        ).pack(side="right", padx=8)
-
-        tk.Button(
-            save_f, text="💾  Guardar",
+            save_f, text="💾  Guardar estrategia",
             bg=C_BLUE, fg="white",
             font=("Consolas", 10, "bold"), bd=0,
             padx=20, pady=8, cursor="hand2", relief="flat",
@@ -804,8 +1159,9 @@ class BingXPanel(tk.Frame):
                 self._apply_balance(bal)
                 self._apply_positions(positions)
                 self._apply_market(sym, price, chg, vol, fr)
-                self._v_uid.set(uid)
+                self._v_uid.set(f"UID: {uid}")
                 self._update_bot_info()
+                self._write_status(connected=True, running=False)
                 bal_str = bal.get("balance", "?")
                 self._log(
                     f"✔  Conectado | UID: {uid} | Balance: {bal_str} USDT | "
@@ -841,6 +1197,8 @@ class BingXPanel(tk.Frame):
             self._start_btn.config(state="normal", bg=C_GREEN, fg=BG_DARK)
         else:
             self._start_btn.config(state="disabled", bg=BG_WIDGET, fg=FG_MUTED)
+            if status in ("DISCONNECTED", "ERROR"):
+                self._write_status(connected=False, running=False)
 
     def _apply_balance(self, bal: dict):
         def _f(key):
@@ -853,6 +1211,8 @@ class BingXPanel(tk.Frame):
         self._v_margin.set(_f("usedMargin")      + " USDT")
         self._v_upnl.set(f"{upnl:+,.4f} USDT")
         self._balance_data = bal
+        # Escribe balance al archivo de estado compartido
+        self._write_status(balance=float(bal.get("balance", 0)))
 
     def _apply_market(self, sym, price, chg, vol, fr):
         self._v_symbol.set(sym)
@@ -990,6 +1350,11 @@ class BingXPanel(tk.Frame):
         self._sv["best_trade"].set(f"{s.get('best_trade', 0):+.4f} USDT")
         self._sv["worst_trade"].set(f"{s.get('worst_trade', 0):+.4f} USDT")
         self._sv["streak"].set(f"{s.get('current_streak', 0)} {s.get('streak_type', '—')}")
+        # Actualizar también el panel rápido del Dashboard
+        self._sv_trades.set(str(s.get("total_trades", 0)))
+        self._sv_wins.set(str(s.get("wins", 0)))
+        self._sv_losses.set(str(s.get("losses", 0)))
+        self._sv_wr.set(f"{s.get('win_rate', 0):.1f}%")
         self._update_chart()
 
     def _update_chart(self):
@@ -1040,8 +1405,10 @@ class BingXPanel(tk.Frame):
         try:
             new_cfg = dict(self.cfg)
             int_keys   = {"default_leverage", "max_positions", "min_confidence",
-                          "cooldown", "max_daily_trades", "max_losses"}
-            float_keys = {"risk_percent"}
+                          "cooldown", "max_daily_trades", "max_losses",
+                          "ema_short", "ema_long", "rsi_period",
+                          "rsi_overbought", "rsi_oversold"}
+            float_keys = {"risk_percent", "atr_sl_mult", "atr_tp_mult"}
             for key, var in self._cfg_vars.items():
                 val = var.get().strip()
                 if key in int_keys:
@@ -1093,6 +1460,7 @@ class BingXPanel(tk.Frame):
         self._bot_thread = threading.Thread(target=self._bot_loop, daemon=True)
         self._bot_thread.start()
         self._log("Bot iniciado — Estrategia: EMA9/EMA21 + RSI14 + ATR14", "ok")
+        self._write_status(running=True)
 
     def _stop_bot(self):
         if self.bot_state == "STOPPED":
@@ -1103,6 +1471,34 @@ class BingXPanel(tk.Frame):
         self._start_btn.config(state="normal",  bg=C_GREEN,   fg=BG_DARK)
         self._stop_btn.config(state="disabled", bg=BG_WIDGET, fg=FG_MUTED)
         self._log("Bot detenido.", "warn")
+        self._write_status(running=False)
+
+    # ──────────────────────────────────────────
+    # Estado compartido (bingx_status.json)
+    # ──────────────────────────────────────────
+
+    def _write_status(self, running=None, connected=None,
+                      balance=None, daily_pnl=None):
+        """Escribe bingx_status.json para que home_screen pueda leer el estado."""
+        try:
+            data = {}
+            if os.path.exists(BINGX_STATUS):
+                try:
+                    with open(BINGX_STATUS, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                except Exception:
+                    data = {}
+            if running is not None:
+                data["running"] = running
+            if connected is not None:
+                data["connected"] = connected
+            if balance is not None:
+                data["balance"] = balance
+            if daily_pnl is not None:
+                data["daily_pnl"] = daily_pnl
+            _save_json(BINGX_STATUS, data)
+        except Exception:
+            pass
 
     # ──────────────────────────────────────────
     # Bot: loop principal
@@ -1174,8 +1570,9 @@ class BingXPanel(tk.Frame):
             return
 
         # Velas
+        tf = cfg.get("timeframe", "15m")
         try:
-            klines = self._client.get_klines(sym, interval="15m", limit=150)
+            klines = self._client.get_klines(sym, interval=tf, limit=150)
             if len(klines) < 30:
                 self._log_safe(f"[{ts}] Pocas velas ({len(klines)}).", "dim")
                 return
@@ -1185,7 +1582,8 @@ class BingXPanel(tk.Frame):
 
         # Señal
         signal, rsi, atr = gen_signal(klines)
-        price = float(klines[-1].get("c", 0))
+        last = klines[-1]
+        price = float(last.get("close", last.get("c", 0)))
 
         self._log_safe(
             f"[{ts}] {sym} | Precio: {price:.4f} | RSI: {rsi:.1f} | "
@@ -1196,11 +1594,13 @@ class BingXPanel(tk.Frame):
         if signal is None:
             return
 
-        # SL / TP (1.5x / 3x ATR)
+        # SL / TP usando multiplicadores de config
+        sl_mult = float(cfg.get("atr_sl_mult", 1.5))
+        tp_mult = float(cfg.get("atr_tp_mult", 3.0))
         if signal == "BUY":
-            sl, tp, side, pside = price - atr * 1.5, price + atr * 3.0, "BUY",  "LONG"
+            sl, tp, side, pside = price - atr * sl_mult, price + atr * tp_mult, "BUY",  "LONG"
         else:
-            sl, tp, side, pside = price + atr * 1.5, price - atr * 3.0, "SELL", "SHORT"
+            sl, tp, side, pside = price + atr * sl_mult, price - atr * tp_mult, "SELL", "SHORT"
 
         qty = calc_qty(avail, rsk, price, sl, lev)
         if qty <= 0:
@@ -1230,7 +1630,22 @@ class BingXPanel(tk.Frame):
 
             self._daily_trades += 1
             self.after(0, lambda: self._v_trades_d.set(str(self._daily_trades)))
-            self.after(0, lambda: self._v_signal.set(f"{signal} {sym} @ {price:.4f}"))
+            sig_txt = f"{signal} {sym} @ {price:.4f}"
+            self.after(0, lambda s=sig_txt: self._v_signal.set(s))
+            sig_detail = (
+                f"Señal:  {signal} {sym}\n"
+                f"Precio: ${price:.4f}\n"
+                f"RSI:    {rsi:.1f}   ATR: {atr:.4f}\n"
+                f"SL:     ${sl:.4f}   TP: ${tp:.4f}\n"
+                f"Qty:    {qty}   Lev: {lev}x\n"
+                f"Hora:   {ts}"
+            )
+            def _update_sig_text(txt=sig_detail):
+                self._sig_text.config(state="normal")
+                self._sig_text.delete("1.0", "end")
+                self._sig_text.insert("end", txt)
+                self._sig_text.config(state="disabled")
+            self.after(0, _update_sig_text)
 
             # Guardar en historial local
             self._append_history({
