@@ -50,13 +50,23 @@ C_ORANGE  = "#ff9a00"
 C_PURPLE  = "#7b5ea7"
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Rutas de archivos
+# Rutas de archivos — siempre desde bingx_paths (NUNCA compartir con MT5)
 # ──────────────────────────────────────────────────────────────────────────────
-_DIR           = os.path.dirname(os.path.abspath(__file__))
-BINGX_CFG      = os.path.join(_DIR, "bingx_config.json")
-BINGX_STATS    = os.path.join(_DIR, "bingx_stats.json")
-BINGX_HISTORY  = os.path.join(_DIR, "bingx_history.json")
-BINGX_STATUS   = os.path.join(_DIR, "bingx_status.json")
+try:
+    from bingx_paths import (
+        BINGX_CONFIG_FILE  as BINGX_CFG,
+        BINGX_STATS_FILE   as BINGX_STATS,
+        BINGX_HISTORY_FILE as BINGX_HISTORY,
+        BINGX_STATUS_FILE  as BINGX_STATUS,
+        ensure_dirs        as _bingx_ensure_dirs,
+    )
+    _bingx_ensure_dirs()
+except ImportError:
+    _DIR          = os.path.dirname(os.path.abspath(__file__))
+    BINGX_CFG     = os.path.join(_DIR, "bingx_config.json")
+    BINGX_STATS   = os.path.join(_DIR, "bingx_stats.json")
+    BINGX_HISTORY = os.path.join(_DIR, "bingx_history.json")
+    BINGX_STATUS  = os.path.join(_DIR, "bingx_status.json")
 
 BINGX_DEFAULTS = {
     # Credenciales (gestionadas en Settings global)
@@ -421,14 +431,35 @@ class BingXPanel(tk.Frame):
         sig_lf = tk.LabelFrame(left, text=" ◉ ÚLTIMA SEÑAL ",
                                bg=BG_PANEL, fg=C_GREEN,
                                font=("Consolas", 9, "bold"), bd=1, relief="solid")
-        sig_lf.pack(fill="both", expand=True, pady=(0, 0))
+        sig_lf.pack(fill="x", pady=(0, 4))
 
         self._sig_text = tk.Text(
             sig_lf, bg=BG_WIDGET, fg=FG_TEXT,
             font=("Consolas", 9), height=5,
             state="disabled", bd=0, padx=6, pady=4, wrap="word",
         )
-        self._sig_text.pack(fill="both", expand=True, padx=8, pady=6)
+        self._sig_text.pack(fill="x", padx=8, pady=6)
+
+        # ┌ Panel de análisis IA ──────────────────────────────────────────────┐
+        ai_lf = tk.LabelFrame(left, text=" 🤖 ANÁLISIS IA ",
+                              bg=BG_PANEL, fg=C_ORANGE,
+                              font=("Consolas", 9, "bold"), bd=1, relief="solid")
+        ai_lf.pack(fill="both", expand=True, pady=(0, 0))
+
+        self._ai_text = tk.Text(
+            ai_lf, bg=BG_WIDGET, fg=FG_TEXT,
+            font=("Consolas", 8), height=7,
+            state="disabled", bd=0, padx=6, pady=4, wrap="word",
+        )
+        self._ai_text.tag_configure("green",  foreground=C_GREEN)
+        self._ai_text.tag_configure("red",    foreground=C_RED)
+        self._ai_text.tag_configure("yellow", foreground=C_YELLOW)
+        self._ai_text.tag_configure("blue",   foreground=C_BLUE)
+        self._ai_text.tag_configure("muted",  foreground=FG_MUTED)
+        self._ai_text.pack(fill="both", expand=True, padx=8, pady=6)
+        self._ai_rsi = 50.0
+        self._ai_atr = 0.0
+        self._ai_trend = "—"
 
         # ── Panel derecho: log ───────────────────────────────────────────────
         right = tk.Frame(main, bg=BG_DARK)
@@ -1585,6 +1616,12 @@ class BingXPanel(tk.Frame):
         last = klines[-1]
         price = float(last.get("close", last.get("c", 0)))
 
+        # Actualizar panel IA con análisis de mercado (siempre, con o sin señal)
+        self._ai_rsi   = rsi
+        self._ai_atr   = atr
+        self.after(0, lambda r=rsi, a=atr, s=signal, p=price, sy=sym:
+                   self._update_ai_panel(r, a, s, p, sy))
+
         self._log_safe(
             f"[{ts}] {sym} | Precio: {price:.4f} | RSI: {rsi:.1f} | "
             f"ATR: {atr:.4f} | Señal: {signal or 'NINGUNA'}",
@@ -1663,6 +1700,79 @@ class BingXPanel(tk.Frame):
             self.after(0, self._load_history_tab)
         except Exception as e:
             self._log_safe(f"[{ts}] Error ejecutando orden: {e}", "err")
+
+    # ──────────────────────────────────────────
+    # Panel de análisis IA
+    # ──────────────────────────────────────────
+
+    def _update_ai_panel(self, rsi: float, atr: float, signal, price: float, symbol: str):
+        """Actualiza el panel de análisis IA con el contexto del mercado actual."""
+        try:
+            w = self._ai_text
+            w.config(state="normal")
+            w.delete("1.0", "end")
+
+            # Tendencia según EMA (aproximada por señal)
+            if signal == "BUY":
+                trend_txt, trend_tag = "▲ ALCISTA", "green"
+            elif signal == "SELL":
+                trend_txt, trend_tag = "▼ BAJISTA", "red"
+            else:
+                trend_txt, trend_tag = "→ LATERAL", "yellow"
+
+            w.insert("end", f"{'─'*36}\n", "muted")
+            w.insert("end", f"  Precio:  ", "muted")
+            w.insert("end", f"${price:.4f}  ", "blue")
+            w.insert("end", f"Símbolo: {symbol}\n", "muted")
+
+            w.insert("end", f"  RSI:     ", "muted")
+            rsi_tag = "red" if rsi > 65 else ("green" if rsi < 35 else "yellow")
+            w.insert("end", f"{rsi:.1f}  ", rsi_tag)
+            if rsi > 70:
+                w.insert("end", "⚠ SOBRECOMPRA\n", "red")
+            elif rsi < 30:
+                w.insert("end", "⚠ SOBREVENTA\n", "green")
+            elif rsi > 60:
+                w.insert("end", "↑ Zona alta\n", "yellow")
+            elif rsi < 40:
+                w.insert("end", "↓ Zona baja\n", "yellow")
+            else:
+                w.insert("end", "→ Neutro\n", "muted")
+
+            w.insert("end", f"  ATR:     ", "muted")
+            w.insert("end", f"{atr:.4f}  volatilidad\n", "blue")
+
+            w.insert("end", f"  Tendencia: ", "muted")
+            w.insert("end", f"{trend_txt}\n", trend_tag)
+
+            w.insert("end", f"{'─'*36}\n", "muted")
+
+            # Recomendación IA
+            w.insert("end", "  💡 IA: ", "yellow")
+            if signal == "BUY":
+                w.insert("end", "Señal de entrada LONG detectada.\n", "green")
+                w.insert("end", "  Condiciones favorables para compra.\n", "muted")
+            elif signal == "SELL":
+                w.insert("end", "Señal de entrada SHORT detectada.\n", "red")
+                w.insert("end", "  Condiciones favorables para venta.\n", "muted")
+            elif rsi > 65:
+                w.insert("end", "Mercado sobrecomprado.\n", "yellow")
+                w.insert("end", "  Espera retroceso RSI < 60.\n", "muted")
+            elif rsi < 35:
+                w.insert("end", "Mercado sobrevendido.\n", "yellow")
+                w.insert("end", "  Posible rebote próximo.\n", "muted")
+            else:
+                w.insert("end", "Sin señal. Esperando confluencia\n", "muted")
+                w.insert("end", "  de indicadores EMA + RSI.\n", "muted")
+
+            # Estado de pérdidas consecutivas
+            if self._consec_losses >= 2:
+                w.insert("end", f"\n  ⚠ {self._consec_losses} pérd. consec. — ", "red")
+                w.insert("end", "Considera reducir riesgo.\n", "yellow")
+
+            w.config(state="disabled")
+        except Exception:
+            pass
 
     # ──────────────────────────────────────────
     # Historial local

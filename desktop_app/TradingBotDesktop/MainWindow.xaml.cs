@@ -1,155 +1,114 @@
 using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Media;
 using System.Windows.Threading;
+using TradingBotDesktop.Services;
 using TradingBotDesktop.Views;
 
 namespace TradingBotDesktop;
 
 public partial class MainWindow : Window
 {
-    private readonly DispatcherTimer _clockTimer      = new();
-    private readonly DispatcherTimer _statusTimer     = new();
-    private readonly DispatcherTimer _maintenanceTimer = new();
-
-    private Button? _activeNavBtn;
-
-    // Paginas (creadas una sola vez)
-    private readonly DashboardView      _dashboard      = new();
-    private readonly StatisticsView     _statistics     = new();
-    private readonly HistoryView        _history        = new();
-    private readonly ConfigurationView  _configuration  = new();
-    private readonly SystemView         _system         = new();
-    private readonly SettingsView       _settings       = new();
+    private readonly DispatcherTimer _clock             = new();
+    private readonly DispatcherTimer _maintenanceTimer  = new();
 
     public MainWindow()
     {
         InitializeComponent();
-        _activeNavBtn = BtnDashboard;
 
-        // Navegar al dashboard al iniciar
-        MainFrame.Navigate(_dashboard);
+        var auth = App.Auth;
+        UserLabel.Text   = auth.IsLoggedIn ? $"  {auth.FullName}" : "  Usuario";
+        LicenseText.Text = auth.LicenseType.ToUpper();
+        LicenseBadge.BorderBrush = auth.LicenseType switch
+        {
+            "lifetime" => System.Windows.Media.Brushes.Gold,
+            "annual"   => System.Windows.Media.Brushes.LimeGreen,
+            "monthly"  => System.Windows.Media.Brushes.CornflowerBlue,
+            _          => System.Windows.Media.Brushes.DimGray,
+        };
 
-        // Reloj
-        _clockTimer.Interval = TimeSpan.FromSeconds(1);
-        _clockTimer.Tick += (_, _) =>
-            ClockText.Text = DateTime.Now.ToString("HH:mm:ss");
-        _clockTimer.Start();
+        _clock.Interval = TimeSpan.FromSeconds(1);
+        _clock.Tick    += (_, _) => ClockLabel.Text = DateTime.Now.ToString("HH:mm:ss");
+        _clock.Start();
 
-        // Estado de conexion (cada 5s)
-        _statusTimer.Interval = TimeSpan.FromSeconds(5);
-        _statusTimer.Tick += async (_, _) => await RefreshConnectionStatus();
-        _statusTimer.Start();
-
-        // Verificar mantenimiento (cada 30s)
         _maintenanceTimer.Interval = TimeSpan.FromSeconds(30);
-        _maintenanceTimer.Tick += async (_, _) => await CheckMaintenance();
+        _maintenanceTimer.Tick    += async (_, _) =>
+        {
+            var m = await ServerApiService.CheckMaintenanceAsync();
+            if (m.Enabled) ShowMaintenance(m.Message);
+            else           HideMaintenance();
+        };
         _maintenanceTimer.Start();
 
-        // Estado del puente
-        App.Bridge.StatusChanged += (_, msg) =>
-            Dispatcher.Invoke(() =>
-            {
-                bool active = msg == "Activo";
-                BridgeDot.Fill  = active
-                    ? (Brush)FindResource("SuccessBrush")
-                    : (Brush)FindResource("ErrorBrush");
-                BridgeText.Text = $"Puente MT5: {(active ? "on" : "off")}";
-            });
+        NavigateHome();
 
-        // Primer check al cargar
-        Loaded += async (_, _) =>
-        {
-            await RefreshConnectionStatus();
-            await CheckMaintenance();
-        };
+        Closed += (_, _) => { _clock.Stop(); _maintenanceTimer.Stop(); };
     }
 
-    // =====================
-    // NAVEGACION
-    // =====================
-    private void NavButton_Click(object sender, RoutedEventArgs e)
+    // ── Navigation ────────────────────────────────────────────────────────────
+
+    public void NavigateHome()
     {
-        if (sender is not Button btn) return;
-
-        // Cambiar estilo del boton activo
-        if (_activeNavBtn != null)
-            _activeNavBtn.Style = (Style)FindResource("NavButton");
-        btn.Style    = (Style)FindResource("NavButtonActive");
-        _activeNavBtn = btn;
-
-        // Navegar a la vista correspondiente
-        Page? page = btn.Tag?.ToString() switch
-        {
-            "Dashboard"     => _dashboard,
-            "Statistics"    => _statistics,
-            "History"       => _history,
-            "Configuration" => _configuration,
-            "System"        => _system,
-            "Settings"      => _settings,
-            _               => null,
-        };
-
-        if (page != null)
-            MainFrame.Navigate(page);
-
-        // Recargar datos de la vista
-        if (page is IRefreshable r)
-            _ = r.RefreshAsync();
+        MainFrame.Navigate(new HomeView(this));
+        BtnHome.Visibility = Visibility.Collapsed;
     }
 
-    // =====================
-    // ESTADO DE CONEXION
-    // =====================
-    private async Task RefreshConnectionStatus()
+    public void NavigateMT5()
     {
-        bool connected = await App.Api.PingAsync();
-        Dispatcher.Invoke(() =>
-        {
-            ConnectionDot.Fill  = connected
-                ? (Brush)FindResource("SuccessBrush")
-                : (Brush)FindResource("ErrorBrush");
-            ConnectionText.Text = connected ? "Conectado" : "Sin conexion";
-        });
+        MainFrame.Navigate(new MT5BotView(this));
+        BtnHome.Visibility = Visibility.Visible;
     }
 
-    // =====================
-    // MODO MANTENIMIENTO
-    // =====================
-    private async Task CheckMaintenance()
+    public void NavigateBingX()
     {
-        try
-        {
-            var maint = await App.Api.GetMaintenanceAsync();
-            Dispatcher.Invoke(() =>
-            {
-                if (maint?.Enabled == true)
-                {
-                    MaintenanceMsg.Text     = !string.IsNullOrEmpty(maint.Message)
-                        ? maint.Message
-                        : "Estamos realizando mejoras. Vuelva pronto.";
-                    MaintenanceOverlay.Visibility = Visibility.Visible;
-                }
-                else
-                {
-                    MaintenanceOverlay.Visibility = Visibility.Collapsed;
-                }
-            });
-        }
-        catch { /* ignorar si no hay conexion */ }
+        MainFrame.Navigate(new BingXBotView(this));
+        BtnHome.Visibility = Visibility.Visible;
     }
 
-    protected override void OnClosed(EventArgs e)
+    // ── Maintenance ───────────────────────────────────────────────────────────
+
+    public void ShowMaintenance(string message)
     {
-        _clockTimer.Stop();
-        _statusTimer.Stop();
+        MaintenanceMsg.Text           = message;
+        MaintenanceOverlay.Visibility = Visibility.Visible;
+    }
+
+    public void HideMaintenance()
+    {
+        MaintenanceOverlay.Visibility = Visibility.Collapsed;
+    }
+
+    // ── Header buttons ────────────────────────────────────────────────────────
+
+    private void BtnHome_Click(object sender, RoutedEventArgs e) => NavigateHome();
+
+    private void BtnSettings_Click(object sender, RoutedEventArgs e)
+    {
+        MessageBox.Show("Accede a la configuración desde la pestaña correspondiente de cada bot.",
+                        "Configuración", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    private void BtnLogout_Click(object sender, RoutedEventArgs e)
+    {
+        var r = MessageBox.Show("¿Deseas cerrar sesión?", "Confirmar",
+                                MessageBoxButton.YesNo, MessageBoxImage.Question);
+        if (r != MessageBoxResult.Yes) return;
+        _clock.Stop();
         _maintenanceTimer.Stop();
-        base.OnClosed(e);
+        App.Auth.Logout();
+        new LoginWindow().Show();
+        Close();
     }
-}
 
-// Interfaz para vistas que se pueden refrescar
-public interface IRefreshable
-{
-    Task RefreshAsync();
+    // ── Footer status ─────────────────────────────────────────────────────────
+
+    public void SetMt5Status(bool online) =>
+        Mt5StatusDot.Fill = new System.Windows.Media.SolidColorBrush(
+            online
+                ? System.Windows.Media.Color.FromRgb(0x06, 0xFF, 0xA5)
+                : System.Windows.Media.Color.FromRgb(0x55, 0x55, 0x55));
+
+    public void SetBingXStatus(bool online) =>
+        BingXStatusDot.Fill = new System.Windows.Media.SolidColorBrush(
+            online
+                ? System.Windows.Media.Color.FromRgb(0xFF, 0x9A, 0x00)
+                : System.Windows.Media.Color.FromRgb(0x55, 0x55, 0x55));
 }

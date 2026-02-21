@@ -1,0 +1,327 @@
+<Page x:Class="TradingBotDesktop.Views.BingXBotView"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      Background="#FF0A0E27" Title="BingX Bot">
+
+    <Page.Resources>
+        <ResourceDictionary Source="../Resources/Styles.xaml"/>
+    </Page.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="90"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- ══ BOT HEADER ══════════════════════════════════════════════════════ -->
+        <Border Grid.Row="0" Background="#FF151B3D">
+            <Border.BorderBrush>
+                <LinearGradientBrush StartPoint="0,1" EndPoint="1,1">
+                    <GradientStop Color="#FFFF9A00" Offset="0"/>
+                    <GradientStop Color="#FF0A0E27" Offset="1"/>
+                </LinearGradientBrush>
+            </Border.BorderBrush>
+            <Border.BorderThickness>0,0,0,2</Border.BorderThickness>
+            <Grid Margin="20,0">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Ellipse x:Name="ConnDot" Width="18" Height="18" Fill="#FFFF006E"
+                             VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <StackPanel>
+                        <TextBlock x:Name="ConnStatus" Text="DESCONECTADO" FontSize="14" FontWeight="Bold"
+                                   Foreground="#FFFF006E" FontFamily="Consolas"/>
+                        <TextBlock Text="BingX Perpetual Futures API" FontSize="10"
+                                   Foreground="#FF8B9DC3" FontFamily="Consolas"/>
+                    </StackPanel>
+
+                    <Rectangle Width="1" Fill="#FF2A3060" Margin="20,8,20,8"/>
+
+                    <Ellipse x:Name="BotDot" Width="18" Height="18" Fill="#FFFF006E"
+                             VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <StackPanel>
+                        <TextBlock x:Name="BotStatus" Text="DETENIDO" FontSize="14" FontWeight="Bold"
+                                   Foreground="#FFFF006E" FontFamily="Consolas"/>
+                        <TextBlock x:Name="BotInfo" Text="Bot inactivo" FontSize="10"
+                                   Foreground="#FF8B9DC3" FontFamily="Consolas"/>
+                    </StackPanel>
+
+                    <Rectangle Width="1" Fill="#FF2A3060" Margin="20,8,20,8"/>
+
+                    <StackPanel>
+                        <TextBlock x:Name="BalanceText" Text="Balance: —" FontSize="11"
+                                   Foreground="#FFFF9A00" FontFamily="Consolas" FontWeight="Bold"/>
+                        <TextBlock x:Name="TodayStats" Text="Trades hoy: 0" FontSize="11"
+                                   Foreground="#FF8B9DC3" FontFamily="Consolas"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <Button x:Name="StartBtn" Content="▶  INICIAR" Style="{StaticResource GreenButton}"
+                            Height="36" Padding="16,0" Margin="0,0,8,0" Click="StartBot_Click"/>
+                    <Button x:Name="StopBtn" Content="■  DETENER" Style="{StaticResource RedButton}"
+                            Height="36" Padding="16,0" IsEnabled="False" Click="StopBot_Click"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ══ TABS ═════════════════════════════════════════════════════════════ -->
+        <TabControl Grid.Row="1" Style="{StaticResource DarkTabControl}">
+
+            <!-- ── Dashboard ── -->
+            <TabItem Header="  Dashboard  " Style="{StaticResource DarkTabItem}">
+                <Grid Margin="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="8"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Izq: señal IA + análisis -->
+                    <StackPanel Grid.Column="0">
+                        <Border Style="{StaticResource CardPanel}" Margin="0,0,0,8">
+                            <StackPanel>
+                                <TextBlock Text="ÚLTIMA SEÑAL" Style="{StaticResource SectionTitle}"/>
+                                <TextBlock x:Name="LastSignal" Text="—" FontSize="26" FontWeight="Bold"
+                                           Foreground="#FFFF9A00" FontFamily="Consolas"/>
+                                <TextBlock x:Name="SignalDetail" Text="Sin señal activa"
+                                           Foreground="#FF8B9DC3" FontFamily="Consolas" FontSize="11"
+                                           TextWrapping="Wrap" Margin="0,8,0,0"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Panel análisis IA (replica bingx_gui.py AI panel) -->
+                        <Border Background="#FF151B3D" BorderBrush="#FFFF9A00" BorderThickness="1"
+                                CornerRadius="10" Padding="14">
+                            <StackPanel>
+                                <TextBlock Text="🤖 ANÁLISIS IA" FontSize="11" FontWeight="Bold"
+                                           Foreground="#FFFF9A00" FontFamily="Consolas" Margin="0,0,0,10"/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/><ColumnDefinition Width="8"/><ColumnDefinition/>
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="6"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="6"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="6"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="RSI:" Foreground="#FF8B9DC3" FontFamily="Consolas" FontSize="11"/>
+                                    <TextBlock x:Name="RsiValue" Grid.Row="0" Grid.Column="2" Text="—"
+                                               Foreground="#FFFFBE0B" FontFamily="Consolas" FontSize="11" FontWeight="Bold"/>
+
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="ATR:" Foreground="#FF8B9DC3" FontFamily="Consolas" FontSize="11"/>
+                                    <TextBlock x:Name="AtrValue" Grid.Row="2" Grid.Column="2" Text="—"
+                                               Foreground="#FF4895EF" FontFamily="Consolas" FontSize="11"/>
+
+                                    <TextBlock Grid.Row="4" Grid.Column="0" Text="Tendencia:" Foreground="#FF8B9DC3" FontFamily="Consolas" FontSize="11"/>
+                                    <TextBlock x:Name="TrendValue" Grid.Row="4" Grid.Column="2" Text="—"
+                                               Foreground="#FF8B9DC3" FontFamily="Consolas" FontSize="11"/>
+
+                                    <TextBlock Grid.Row="6" Grid.Column="0" Text="IA:" Foreground="#FF8B9DC3" FontFamily="Consolas" FontSize="11"/>
+                                    <TextBlock x:Name="AiRec" Grid.Row="6" Grid.Column="2" Text="Esperando datos..."
+                                               Foreground="#FFFF9A00" FontFamily="Consolas" FontSize="11"
+                                               TextWrapping="Wrap"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+
+                    <!-- Der: cuenta + posiciones -->
+                    <StackPanel Grid.Column="2">
+                        <Border Style="{StaticResource CardPanel}" Margin="0,0,0,8">
+                            <StackPanel>
+                                <TextBlock Text="CUENTA BINGX" Style="{StaticResource SectionTitle}"/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/><ColumnDefinition Width="8"/><ColumnDefinition/>
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="6"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="6"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Balance:" Foreground="#FF8B9DC3" FontFamily="Consolas" FontSize="11"/>
+                                    <TextBlock x:Name="AccBalance" Grid.Row="0" Grid.Column="2" Text="—"
+                                               Foreground="#FFFF9A00" FontFamily="Consolas" FontSize="13" FontWeight="Bold"/>
+
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Margen disp.:" Foreground="#FF8B9DC3" FontFamily="Consolas" FontSize="11"/>
+                                    <TextBlock x:Name="AccMargin" Grid.Row="2" Grid.Column="2" Text="—"
+                                               Foreground="#FF4895EF" FontFamily="Consolas" FontSize="11"/>
+
+                                    <TextBlock Grid.Row="4" Grid.Column="0" Text="PnL no realiz.:" Foreground="#FF8B9DC3" FontFamily="Consolas" FontSize="11"/>
+                                    <TextBlock x:Name="AccPnl" Grid.Row="4" Grid.Column="2" Text="—"
+                                               Foreground="#FF06FFA5" FontFamily="Consolas" FontSize="11"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Style="{StaticResource CardPanel}">
+                            <StackPanel>
+                                <TextBlock Text="POSICIONES ABIERTAS" Style="{StaticResource SectionTitle}"/>
+                                <DataGrid x:Name="PositionsGrid" AutoGenerateColumns="False" Height="200">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Símbolo" Binding="{Binding Symbol}" Width="*"/>
+                                        <DataGridTextColumn Header="Dir." Binding="{Binding Side}" Width="50"/>
+                                        <DataGridTextColumn Header="PnL" Binding="{Binding Pnl}" Width="80"/>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Grid>
+            </TabItem>
+
+            <!-- ── Historial ── -->
+            <TabItem Header="  Historial  " Style="{StaticResource DarkTabItem}">
+                <Grid Margin="12">
+                    <Border Style="{StaticResource CardPanel}">
+                        <StackPanel>
+                            <TextBlock Text="HISTORIAL DE OPERACIONES" Style="{StaticResource SectionTitle}"/>
+                            <DataGrid x:Name="HistoryGrid" AutoGenerateColumns="False" Height="380" Margin="0,8,0,0">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Fecha" Binding="{Binding Date}" Width="120"/>
+                                    <DataGridTextColumn Header="Símbolo" Binding="{Binding Symbol}" Width="100"/>
+                                    <DataGridTextColumn Header="Dir." Binding="{Binding Direction}" Width="60"/>
+                                    <DataGridTextColumn Header="Resultado" Binding="{Binding Result}" Width="80"/>
+                                    <DataGridTextColumn Header="PnL" Binding="{Binding Pnl}" Width="80"/>
+                                    <DataGridTextColumn Header="Precio entrada" Binding="{Binding Entry}" Width="*"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </TabItem>
+
+            <!-- ── Estadísticas ── -->
+            <TabItem Header="  Estadísticas  " Style="{StaticResource DarkTabItem}">
+                <Grid Margin="12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition/><ColumnDefinition Width="8"/><ColumnDefinition/>
+                    </Grid.ColumnDefinitions>
+                    <Border Grid.Column="0" Style="{StaticResource CardPanel}">
+                        <StackPanel>
+                            <TextBlock Text="MÉTRICAS GLOBALES" Style="{StaticResource SectionTitle}"/>
+                            <UniformGrid Columns="2" Margin="0,8,0,0">
+                                <StackPanel Margin="0,0,8,12">
+                                    <TextBlock x:Name="StTotalTrades" Text="0" Style="{StaticResource StatValue}" Foreground="#FF4895EF"/>
+                                    <TextBlock Text="Total trades" Style="{StaticResource StatLabel}"/>
+                                </StackPanel>
+                                <StackPanel Margin="0,0,0,12">
+                                    <TextBlock x:Name="StWinRate" Text="0%" Style="{StaticResource StatValue}" Foreground="#FFFFBE0B"/>
+                                    <TextBlock Text="Win rate" Style="{StaticResource StatLabel}"/>
+                                </StackPanel>
+                                <StackPanel Margin="0,0,8,0">
+                                    <TextBlock x:Name="StTotalPnl" Text="$0" Style="{StaticResource StatValue}" Foreground="#FF06FFA5"/>
+                                    <TextBlock Text="PnL total" Style="{StaticResource StatLabel}"/>
+                                </StackPanel>
+                                <StackPanel>
+                                    <TextBlock x:Name="StStreak" Text="0" Style="{StaticResource StatValue}" Foreground="#FFFF9A00"/>
+                                    <TextBlock Text="Racha actual" Style="{StaticResource StatLabel}"/>
+                                </StackPanel>
+                            </UniformGrid>
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Column="2" Style="{StaticResource CardPanel}">
+                        <StackPanel>
+                            <TextBlock Text="MEJOR / PEOR TRADE" Style="{StaticResource SectionTitle}"/>
+                            <StackPanel Margin="0,8,0,0">
+                                <TextBlock Text="Mejor trade:" Foreground="#FF8B9DC3" FontFamily="Consolas" FontSize="11"/>
+                                <TextBlock x:Name="StBest" Text="—" FontSize="20" FontWeight="Bold"
+                                           Foreground="#FF06FFA5" FontFamily="Consolas"/>
+                                <TextBlock Text="Peor trade:" Foreground="#FF8B9DC3" FontFamily="Consolas"
+                                           FontSize="11" Margin="0,12,0,0"/>
+                                <TextBlock x:Name="StWorst" Text="—" FontSize="20" FontWeight="Bold"
+                                           Foreground="#FFFF006E" FontFamily="Consolas"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </TabItem>
+
+            <!-- ── Configuración ── -->
+            <TabItem Header="  Configuración  " Style="{StaticResource DarkTabItem}">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <Grid Margin="12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition/><ColumnDefinition Width="12"/><ColumnDefinition/>
+                        </Grid.ColumnDefinitions>
+                        <Border Grid.Column="0" Style="{StaticResource CardPanel}">
+                            <StackPanel>
+                                <TextBlock Text="PARÁMETROS DE ESTRATEGIA" Style="{StaticResource SectionTitle}"/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/><ColumnDefinition Width="8"/><ColumnDefinition/>
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/><RowDefinition Height="8"/>
+                                        <RowDefinition Height="Auto"/><RowDefinition Height="8"/>
+                                        <RowDefinition Height="Auto"/><RowDefinition Height="8"/>
+                                        <RowDefinition Height="Auto"/><RowDefinition Height="8"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+
+                                    <Label Grid.Row="0" Grid.Column="0" Content="Símbolo:" VerticalAlignment="Center"/>
+                                    <TextBox x:Name="CfgSymbol" Grid.Row="0" Grid.Column="2" Text="BTC-USDT" Height="34"/>
+
+                                    <Label Grid.Row="2" Grid.Column="0" Content="Leverage:" VerticalAlignment="Center"/>
+                                    <TextBox x:Name="CfgLeverage" Grid.Row="2" Grid.Column="2" Text="10" Height="34"/>
+
+                                    <Label Grid.Row="4" Grid.Column="0" Content="Riesgo % por trade:" VerticalAlignment="Center"/>
+                                    <TextBox x:Name="CfgRisk" Grid.Row="4" Grid.Column="2" Text="1.0" Height="34"/>
+
+                                    <Label Grid.Row="6" Grid.Column="0" Content="Cooldown (seg):" VerticalAlignment="Center"/>
+                                    <TextBox x:Name="CfgCooldown" Grid.Row="6" Grid.Column="2" Text="60" Height="34"/>
+
+                                    <Label Grid.Row="8" Grid.Column="0" Content="Confianza mínima (%):" VerticalAlignment="Center"/>
+                                    <TextBox x:Name="CfgMinConf" Grid.Row="8" Grid.Column="2" Text="30" Height="34"/>
+                                </Grid>
+                                <Button Content="💾 Guardar configuración" Style="{StaticResource OrangeButton}"
+                                        Height="38" FontSize="12" Margin="0,20,0,0" Click="SaveConfig_Click"/>
+                                <TextBlock x:Name="ConfigStatus" Text="" Foreground="#FF06FFA5"
+                                           FontFamily="Consolas" FontSize="11" Margin="0,8,0,0"/>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Grid.Column="2" Style="{StaticResource CardPanel}">
+                            <StackPanel>
+                                <TextBlock Text="CREDENCIALES BINGX API" Style="{StaticResource SectionTitle}"/>
+                                <Label Content="API Key:"/>
+                                <TextBox x:Name="ApiKey" Height="34" Margin="0,0,0,10" FontFamily="Consolas"/>
+                                <Label Content="API Secret:"/>
+                                <PasswordBox x:Name="ApiSecret" Height="34" Margin="0,0,0,20" FontFamily="Consolas"/>
+                                <Button Content="💾 Guardar credenciales" Style="{StaticResource SecondaryButton}"
+                                        Height="38" FontSize="12" Click="SaveCreds_Click"/>
+                                <TextBlock Text="Las credenciales se guardan cifradas en el servidor."
+                                           Foreground="#FF4A5280" FontFamily="Consolas" FontSize="10"
+                                           TextWrapping="Wrap" Margin="0,8,0,0"/>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- ── Sistema ── -->
+            <TabItem Header="  Sistema  " Style="{StaticResource DarkTabItem}">
+                <ScrollViewer Margin="12" VerticalScrollBarVisibility="Auto">
+                    <Border Style="{StaticResource CardPanel}">
+                        <StackPanel>
+                            <TextBlock Text="INFORMACIÓN DEL SISTEMA" Style="{StaticResource SectionTitle}"/>
+                            <DataGrid x:Name="SysGrid" AutoGenerateColumns="False" Height="300" Margin="0,8,0,0">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="Parámetro" Binding="{Binding Key}" Width="200"/>
+                                    <DataGridTextColumn Header="Valor" Binding="{Binding Value}" Width="*"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </StackPanel>
+                    </Border>
+                </ScrollViewer>
+            </TabItem>
+        </TabControl>
+    </Grid>
+</Page>
