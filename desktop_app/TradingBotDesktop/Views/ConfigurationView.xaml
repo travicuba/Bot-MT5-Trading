@@ -1,0 +1,93 @@
+<Page x:Class="TradingBotDesktop.Views.ConfigurationView"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      Background="{StaticResource SecondaryBgBrush}"
+      Title="Configuracion">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <Grid Margin="24">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- Titulo -->
+            <Grid Grid.Row="0" Margin="0,0,0,20">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="Configuracion del Bot" Style="{StaticResource PageTitle}" Margin="0"/>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Content="Recargar" Style="{StaticResource SecondaryButton}"
+                            Click="BtnReload_Click" Margin="0,0,8,0"/>
+                    <Button Content="Guardar Cambios" Style="{StaticResource PrimaryButton}"
+                            Click="BtnSave_Click"/>
+                </StackPanel>
+            </Grid>
+
+            <!-- PARAMETROS BOT -->
+            <Border Grid.Row="1" Style="{StaticResource CardPanel}" Margin="0,0,0,16">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                        <TextBlock Text="PARAMETROS DE TRADING" Style="{StaticResource SectionTitle}"/>
+
+                        <Label Content="Confianza minima (%)"/>
+                        <TextBox x:Name="TxtMinConf" Margin="0,0,0,12"/>
+
+                        <Label Content="Lote"/>
+                        <TextBox x:Name="TxtLotSize" Margin="0,0,0,12"/>
+
+                        <Label Content="Cooldown entre señales (seg)"/>
+                        <TextBox x:Name="TxtCooldown" Margin="0,0,0,12"/>
+
+                        <Label Content="Max trades diarios"/>
+                        <TextBox x:Name="TxtMaxDaily" Margin="0,0,0,12"/>
+
+                        <Label Content="Max perdidas consecutivas"/>
+                        <TextBox x:Name="TxtMaxLosses" Margin="0,0,0,12"/>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1" Margin="16,0,0,0">
+                        <TextBlock Text="PARAMETROS AVANZADOS" Style="{StaticResource SectionTitle}"/>
+
+                        <Label Content="Max trades simultaneos"/>
+                        <TextBox x:Name="TxtMaxConcurrent" Margin="0,0,0,12"/>
+
+                        <Label Content="Intervalo minimo entre señales (seg)"/>
+                        <TextBox x:Name="TxtMinInterval" Margin="0,0,0,12"/>
+
+                        <Label Content="Hora inicio (HH:MM)"/>
+                        <TextBox x:Name="TxtStartHour" Margin="0,0,0,12"/>
+
+                        <Label Content="Hora fin (HH:MM)"/>
+                        <TextBox x:Name="TxtEndHour" Margin="0,0,0,12"/>
+
+                        <CheckBox x:Name="ChkAvoidRepeat"
+                                  Content="Evitar repetir estrategia/direccion"
+                                  Margin="0,8,0,8"/>
+                        <CheckBox x:Name="ChkAutoOptimize"
+                                  Content="Auto-optimizacion ML habilitada"
+                                  Margin="0,0,0,12"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- ESTADO -->
+            <Border Grid.Row="2" Style="{StaticResource CardPanel}">
+                <StackPanel>
+                    <TextBlock x:Name="StatusMsg" Text=""
+                               Foreground="{StaticResource AccentBrush}"
+                               FontSize="12"/>
+                </StackPanel>
+            </Border>
+
+        </Grid>
+    </ScrollViewer>
+</Page>

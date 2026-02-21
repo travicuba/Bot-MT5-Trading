@@ -16,11 +16,9 @@ import glob
 from datetime import datetime
 
 
-# Ruta legacy (archivo unico - compatibilidad)
-FEEDBACK_FILE_LEGACY = "/home/travieso/.wine/drive_c/Program Files/MetaTrader 5/MQL5/Files/trade_feedback.json"
-
-# Ruta nueva (carpeta con archivos individuales)
-FEEDBACK_FOLDER = "/home/travieso/.wine/drive_c/Program Files/MetaTrader 5/MQL5/Files/trade_feedback"
+import sys, os as _os
+sys.path.insert(0, _os.path.dirname(_os.path.dirname(__file__)))
+from mt5_paths import FEEDBACK_FILE_LEGACY, FEEDBACK_FOLDER
 
 STATS_FILE = "learning_data/setup_stats.json"
 HISTORY_FILE = "learning_data/trade_history.json"

@@ -25,7 +25,8 @@ sys.path.append(os.path.dirname(__file__))
 # ==============================
 # STATUS DEL BOT
 # ==============================
-BOT_STATUS_FILE = "/home/travieso/.wine/drive_c/Program Files/MetaTrader 5/MQL5/Files/bot_status.json"
+from mt5_paths import BOT_STATUS_FILE, SIGNAL_FILE as _SIGNAL_FILE_PATH, FEEDBACK_FILE_LEGACY as _FEEDBACK_FILE_PATH, ensure_dirs
+ensure_dirs()
 
 def write_bot_status(running: bool):
     min_conf_pct = CONFIG.get("min_confidence", 35) if CONFIG else 35
@@ -209,8 +210,8 @@ consecutive_losses = 0
 paused_until = 0
 cycle_count = 0
 
-SIGNAL_FILE_PATH = "/home/travieso/.wine/drive_c/Program Files/MetaTrader 5/MQL5/Files/signals/signal.json"
-FEEDBACK_FILE_PATH = "/home/travieso/.wine/drive_c/Program Files/MetaTrader 5/MQL5/Files/trade_feedback.json"
+SIGNAL_FILE_PATH = _SIGNAL_FILE_PATH
+FEEDBACK_FILE_PATH = _FEEDBACK_FILE_PATH
 
 # ==============================
 # MULTI-TRADE TRACKING

@@ -1,7 +1,8 @@
 import json
 import os
-
-MT5_MARKET_FILE = "/home/travieso/.wine/drive_c/Program Files/MetaTrader 5/MQL5/Files/market_data.json"
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+from mt5_paths import MARKET_DATA_FILE as MT5_MARKET_FILE
 
 
 def read_market_data():
