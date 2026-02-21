@@ -7,7 +7,6 @@
     <UseWindowsForms>true</UseWindowsForms>
     <AssemblyName>TradingBotDesktop</AssemblyName>
     <RootNamespace>TradingBotDesktop</RootNamespace>
-    <ApplicationIcon>Assets\icon.ico</ApplicationIcon>
     <Version>1.0.0</Version>
     <AssemblyVersion>1.0.0.0</AssemblyVersion>
     <FileVersion>1.0.0.0</FileVersion>
@@ -17,10 +16,6 @@
     <PlatformTarget>AnyCPU</PlatformTarget>
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
-
-  <ItemGroup>
-    <Resource Include="Assets\icon.ico" />
-  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="System.Text.Json" Version="8.0.5" />
