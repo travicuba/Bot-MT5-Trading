@@ -360,9 +360,16 @@ def _atr(highs: list, lows: list, closes: list, n: int = 14) -> float:
     return atr
 
 
+def _kf(k, full, short, default=0.0):
+    """Extrae un campo de una vela manejando distintos nombres de campo de BingX."""
+    v = k.get(full, k.get(short, default))
+    return float(v) if v not in (None, "", "null") else default
+
+
 def generate_signal(klines: list) -> tuple:
     """
     Genera señal de trading basada en EMA9/EMA21 + RSI14 + ATR14.
+    Maneja los formatos de campo de BingX v2 (o/h/l/c) y v3 (open/high/low/close).
 
     Retorna (signal, rsi, atr) donde signal es:
       'BUY'  → abrir LONG
@@ -372,10 +379,10 @@ def generate_signal(klines: list) -> tuple:
     if len(klines) < 30:
         return None, 50.0, 0.0
 
-    opens  = [float(k["o"]) for k in klines]
-    highs  = [float(k["h"]) for k in klines]
-    lows   = [float(k["l"]) for k in klines]
-    closes = [float(k["c"]) for k in klines]
+    opens  = [_kf(k, "open",  "o")  for k in klines]
+    highs  = [_kf(k, "high",  "h")  for k in klines]
+    lows   = [_kf(k, "low",   "l")  for k in klines]
+    closes = [_kf(k, "close", "c")  for k in klines]
 
     ema9  = _ema_series(closes, 9)
     ema21 = _ema_series(closes, 21)

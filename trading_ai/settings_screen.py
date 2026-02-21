@@ -42,18 +42,13 @@ APP_CFG_FILE   = os.path.join(_BASE_DIR, "app_config.json")
 BINGX_DEFAULTS = {
     "api_key":          "",
     "api_secret":       "",
-    "demo_mode":        True,
     "default_symbol":   "BTC-USDT",
-    "default_leverage": 5,
+    "default_leverage": 10,
     "margin_type":      "ISOLATED",
     "risk_percent":     1.0,
     "max_positions":    3,
-    "min_confidence":   30,
-    "cooldown":         60,
     "max_daily_trades": 20,
     "max_losses":       3,
-    "telegram_token":   "",
-    "telegram_chat_id": "",
 }
 
 # Configuración de la app por defecto
@@ -319,7 +314,8 @@ class SettingsScreen(tk.Frame):
 
         # ── Sección: API ──
         self._section_title(sf, "🔑 Credenciales de API BingX")
-        self._note(sf, "Genera tu API Key en: BingX → Perfil → Gestión de API")
+        self._note(sf, "Genera tu API Key en: BingX → Perfil → Gestión de API\n"
+                       "El sistema opera en modo REAL. No existe modo demo en esta versión.")
 
         for key, label, show in [
             ("api_key",    "API Key",    True),
@@ -329,10 +325,6 @@ class SettingsScreen(tk.Frame):
             self._vars_bingx[key] = v
             self._entry_row(sf, label, v, "Introduce tu clave", show_char="*" if not show else None)
 
-        demo_v = tk.BooleanVar(value=self.bingx_cfg.get("demo_mode", True))
-        self._vars_bingx["demo_mode"] = demo_v
-        self._checkbox_row(sf, "Modo Demo (Paper Trading — sin dinero real)", demo_v)
-
         # ── Sección: Trading ──
         self._section_title(sf, "⚙ Parámetros de Trading")
 
@@ -340,11 +332,11 @@ class SettingsScreen(tk.Frame):
         self._vars_bingx["default_symbol"] = sym_v
         self._entry_row(sf, "Símbolo por defecto", sym_v, "Ej: BTC-USDT, ETH-USDT")
 
-        lev_v = tk.StringVar(value=str(self.bingx_cfg.get("default_leverage", 5)))
+        lev_v = tk.StringVar(value=str(self.bingx_cfg.get("default_leverage", 10)))
         self._vars_bingx["default_leverage"] = lev_v
         self._entry_row(sf, "Apalancamiento (1-125x)", lev_v, "1 – 125")
 
-        margin_opts = ["ISOLATED", "CROSS"]
+        margin_opts = ["ISOLATED", "CROSSED"]
         margin_v = tk.StringVar(value=self.bingx_cfg.get("margin_type", "ISOLATED"))
         self._vars_bingx["margin_type"] = margin_v
         self._combo_row(sf, "Tipo de margen", margin_v, margin_opts)
@@ -353,20 +345,23 @@ class SettingsScreen(tk.Frame):
         self._vars_bingx["risk_percent"] = risk_v
         self._entry_row(sf, "Riesgo por trade (%)", risk_v, "0.1 – 10.0")
 
-        # ── Sección: Bot ──
-        self._section_title(sf, "🤖 Parámetros del Bot BingX")
+        # ── Sección: Gestión de riesgo ──
+        self._section_title(sf, "🛡 Gestión de Riesgo")
 
-        int_fields_bx = [
-            ("min_confidence",   "Confianza mínima (0-100)",     "0 – 100"),
-            ("cooldown",         "Cooldown (seg)",                "10 – 600"),
-            ("max_daily_trades", "Máx. trades diarios",          "1 – 100"),
-            ("max_losses",       "Máx. pérdidas consecutivas",   "1 – 20"),
-            ("max_positions",    "Máx. posiciones simultáneas",  "1 – 10"),
+        int_fields_risk = [
+            ("max_daily_trades", "Máx. trades diarios",         "1 – 100"),
+            ("max_losses",       "Máx. pérdidas consecutivas",  "1 – 20"),
+            ("max_positions",    "Máx. posiciones simultáneas", "1 – 10"),
         ]
-        for key, label, hint in int_fields_bx:
+        for key, label, hint in int_fields_risk:
             v = tk.StringVar(value=str(self.bingx_cfg.get(key, 3)))
             self._vars_bingx[key] = v
             self._entry_row(sf, label, v, hint)
+
+        # ── Nota sobre parámetros de estrategia ──
+        self._section_title(sf, "ℹ Parámetros de Estrategia")
+        self._note(sf, "Los parámetros de estrategia (EMA, RSI, ATR, timeframe, cooldown, etc.) "
+                       "se configuran directamente dentro del panel BingX Futures → pestaña Configuración.")
 
     # ──────────────────────────────────────────
     # Tab: Telegram
