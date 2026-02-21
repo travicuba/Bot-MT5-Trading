@@ -80,7 +80,7 @@
                         <Ellipse x:Name="BridgeDot"
                                  Style="{StaticResource StatusDot}"
                                  Fill="{StaticResource ErrorBrush}"
-                                 Margin="0,0,6,0}"/>
+                                 Margin="0,0,6,0"/>
                         <TextBlock x:Name="BridgeText"
                                    Text="Puente MT5: off"
                                    FontSize="11"
