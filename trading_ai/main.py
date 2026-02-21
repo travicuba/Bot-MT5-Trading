@@ -393,10 +393,10 @@ def run_cycle():
     write_debug("INFO", f"Ciclo #{cycle_count} | Activos: {get_active_count()}")
 
     # SISTEMA ML
+    global CONFIG
     if ML_AVAILABLE and CONFIG.get("auto_optimize", True):
         try:
             if ml_auto_adjust():
-                global CONFIG
                 CONFIG = load_config()
                 write_debug("INFO", "ML ajusto configuracion")
         except Exception as e:
