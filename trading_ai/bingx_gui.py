@@ -21,6 +21,28 @@ from datetime import datetime
 import tkinter as tk
 from tkinter import ttk, messagebox
 
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Rutas de archivos — siempre desde bingx_paths (NUNCA compartir con MT5)
+# ──────────────────────────────────────────────────────────────────────────────
+
+_DIR = os.path.dirname(os.path.abspath(__file__))
+
+try:
+    from bingx_paths import (
+        BINGX_CONFIG_FILE  as BINGX_CFG,
+        BINGX_STATS_FILE   as BINGX_STATS,
+        BINGX_HISTORY_FILE as BINGX_HISTORY,
+        BINGX_STATUS_FILE  as BINGX_STATUS,
+        ensure_dirs        as _bingx_ensure_dirs,
+    )
+    _bingx_ensure_dirs()
+except ImportError:
+    BINGX_CFG     = os.path.join(_DIR, "bingx_config.json")
+    BINGX_STATS   = os.path.join(_DIR, "bingx_stats.json")
+    BINGX_HISTORY = os.path.join(_DIR, "bingx_history.json")
+    BINGX_STATUS  = os.path.join(_DIR, "bingx_status.json")
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Matplotlib (opcional)
 # ──────────────────────────────────────────────────────────────────────────────
