@@ -23,8 +23,12 @@ except:
     eval_mean_reversion = None
 
 
-# ⚠️ Ruta ABSOLUTA al directorio FILES de MT5 (Wine)
-SIGNAL_PATH = "/home/travieso/.wine/drive_c/Program Files/MetaTrader 5/MQL5/Files/signals/signal.json"
+# Ruta dinámica desde mt5_paths (soporta modo VPS y modo Wine via MT5_FILES_BASE)
+try:
+    from mt5_paths import SIGNAL_FILE as SIGNAL_PATH
+except Exception:
+    # Fallback: carpeta local del VPS
+    SIGNAL_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "mt5_exchange", "signals", "signal.json")
 
 
 def evaluate_signal(setup_name, context, market_data):

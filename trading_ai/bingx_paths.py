@@ -41,4 +41,11 @@ def ensure_dirs():
     os.makedirs(BINGX_BASE, exist_ok=True)
     os.makedirs(BINGX_FEEDBACK_DIR, exist_ok=True)
     os.makedirs(BINGX_LEARNING_DIR, exist_ok=True)
-    print(f"[BingX] Rutas inicializadas en: {BINGX_BASE}")
+    # Escribir al log de BingX en lugar de print() para no contaminar sys.stdout
+    # (bot_gui_professional.py redirige sys.stdout al panel de logs de MT5)
+    try:
+        with open(BINGX_LOG_FILE, "a", encoding="utf-8") as _f:
+            from datetime import datetime as _dt
+            _f.write(f"[{_dt.now():%Y-%m-%d %H:%M:%S}] [BingX] Rutas inicializadas en: {BINGX_BASE}\n")
+    except Exception:
+        pass
