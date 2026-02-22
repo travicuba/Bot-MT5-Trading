@@ -9,7 +9,8 @@ SECRET_KEY  = os.environ.get("JWT_SECRET_KEY", "tradingbot_pro_secret_change_in_
 ALGORITHM   = "HS256"
 EXPIRE_DAYS = 30
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# bcrypt has a 72-byte max; truncate_error=False silently truncates (native bcrypt behavior)
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__truncate_error=False)
 
 
 def hash_password(password: str) -> str:
