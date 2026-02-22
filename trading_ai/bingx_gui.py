@@ -1650,6 +1650,10 @@ class BingXPanel(tk.Frame):
             "info",
         )
 
+        # Actualizar "ÚLTIMA SEÑAL" siempre (incluso cuando no hay señal activa)
+        sig_display = f"{signal}  {sym}" if signal else f"NINGUNA  ({ts})"
+        self.after(0, lambda s=sig_display: self._v_signal.set(s))
+
         if signal is None:
             return
 
