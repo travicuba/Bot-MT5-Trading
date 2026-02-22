@@ -1,0 +1,219 @@
+<Page x:Class="TradingBotDesktop.Views.HomeView"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      Background="#FF0A0E27"
+      Title="Home">
+
+    <Page.Resources>
+        <ResourceDictionary Source="../Resources/Styles.xaml"/>
+    </Page.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- ══ CONTENIDO PRINCIPAL ══════════════════════════════════════════ -->
+        <StackPanel Grid.Row="0" VerticalAlignment="Center" HorizontalAlignment="Center">
+
+            <!-- Logo -->
+            <StackPanel HorizontalAlignment="Center" Margin="0,0,0,12">
+                <TextBlock Text="⚡" FontSize="56" Foreground="#FF4895EF"
+                           HorizontalAlignment="Center"/>
+                <TextBlock FontSize="15" HorizontalAlignment="Center" FontFamily="Consolas">
+                    <Run Text="AI " Foreground="#FF8B9DC3"/>
+                    <Run Text="TRADE" FontWeight="Bold" Foreground="#FFE0E6FF"/>
+                    <Run Text=" BOT" Foreground="#FF4895EF" FontWeight="Bold"/>
+                </TextBlock>
+                <TextBlock Text="Plataforma de trading inteligente" FontSize="11"
+                           Foreground="#FF8B9DC3" FontFamily="Consolas"
+                           HorizontalAlignment="Center" Margin="0,4,0,0"/>
+            </StackPanel>
+
+            <!-- Tarjetas de plataforma -->
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,24,0,0">
+
+                <!-- ── Tarjeta MT5 ── -->
+                <Border Width="320" Margin="0,0,20,0" CornerRadius="12"
+                        Background="#FF151B3D" BorderThickness="1"
+                        BorderBrush="#FF2A3060" Cursor="Hand"
+                        x:Name="Mt5Card" MouseLeftButtonUp="Mt5Card_Click">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#FF1A2148"/>
+                                    <Setter Property="BorderBrush" Value="#FF4895EF"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <Grid>
+                        <!-- Blue left border accent -->
+                        <Rectangle Width="4" HorizontalAlignment="Left" CornerRadius="4,0,0,4"
+                                   Fill="#FF4895EF"/>
+                        <StackPanel Margin="20,20,16,20">
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                <TextBlock Text="📊" FontSize="28" VerticalAlignment="Center"/>
+                                <StackPanel Margin="10,0,0,0">
+                                    <TextBlock Text="MetaTrader 5" FontSize="18" FontWeight="Bold"
+                                               Foreground="#FFE0E6FF" FontFamily="Consolas"/>
+                                    <TextBlock Text="Forex &amp; CFDs" FontSize="11"
+                                               Foreground="#FF4895EF" FontFamily="Consolas"/>
+                                </StackPanel>
+                            </StackPanel>
+
+                            <StackPanel Margin="0,8,0,16">
+                                <TextBlock Margin="0,0,0,6">
+                                    <Run Text="● " Foreground="#FF06FFA5"/>
+                                    <Run Text="Señales IA en tiempo real" Foreground="#FF8B9DC3" FontSize="11" FontFamily="Consolas"/>
+                                </TextBlock>
+                                <TextBlock Margin="0,0,0,6">
+                                    <Run Text="● " Foreground="#FF06FFA5"/>
+                                    <Run Text="Multi-estrategia adaptativa" Foreground="#FF8B9DC3" FontSize="11" FontFamily="Consolas"/>
+                                </TextBlock>
+                                <TextBlock Margin="0,0,0,6">
+                                    <Run Text="● " Foreground="#FF06FFA5"/>
+                                    <Run Text="Gestión de riesgo automática" Foreground="#FF8B9DC3" FontSize="11" FontFamily="Consolas"/>
+                                </TextBlock>
+                                <TextBlock>
+                                    <Run Text="● " Foreground="#FF06FFA5"/>
+                                    <Run Text="Dashboard completo con stats" Foreground="#FF8B9DC3" FontSize="11" FontFamily="Consolas"/>
+                                </TextBlock>
+                            </StackPanel>
+
+                            <!-- Balance area -->
+                            <Border Background="#FF0D1020" CornerRadius="6" Padding="12,8" Margin="0,0,0,14">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition/><ColumnDefinition/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <TextBlock x:Name="Mt5Balance" Text="—" FontSize="16" FontWeight="Bold"
+                                                   Foreground="#FF4895EF" FontFamily="Consolas"/>
+                                        <TextBlock Text="Balance" FontSize="10"
+                                                   Foreground="#FF4A5280" FontFamily="Consolas"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" HorizontalAlignment="Right">
+                                        <StackPanel Orientation="Horizontal">
+                                            <Ellipse x:Name="Mt5Dot" Width="8" Height="8"
+                                                     Fill="#FF555555" VerticalAlignment="Center"
+                                                     Margin="0,0,4,0"/>
+                                            <TextBlock x:Name="Mt5StatusText" Text="Desconectado"
+                                                       FontSize="10" Foreground="#FF8B9DC3"
+                                                       FontFamily="Consolas" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+
+                            <Button Content="▶  Abrir MT5 Bot" Style="{StaticResource PrimaryButton}"
+                                    Height="38" FontSize="12" Click="BtnMT5_Click"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- ── Tarjeta BingX ── -->
+                <Border Width="320" CornerRadius="12"
+                        Background="#FF151B3D" BorderThickness="1"
+                        BorderBrush="#FF2A3060" Cursor="Hand"
+                        x:Name="BingXCard" MouseLeftButtonUp="BingXCard_Click">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#FF1A2148"/>
+                                    <Setter Property="BorderBrush" Value="#FFFF9A00"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <Grid>
+                        <!-- Orange left border accent -->
+                        <Rectangle Width="4" HorizontalAlignment="Left" CornerRadius="4,0,0,4"
+                                   Fill="#FFFF9A00"/>
+                        <StackPanel Margin="20,20,16,20">
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                <TextBlock Text="⚡" FontSize="28" VerticalAlignment="Center"
+                                           Foreground="#FFFF9A00"/>
+                                <StackPanel Margin="10,0,0,0">
+                                    <TextBlock Text="BingX" FontSize="18" FontWeight="Bold"
+                                               Foreground="#FFE0E6FF" FontFamily="Consolas"/>
+                                    <TextBlock Text="Perpetual Futures" FontSize="11"
+                                               Foreground="#FFFF9A00" FontFamily="Consolas"/>
+                                </StackPanel>
+                            </StackPanel>
+
+                            <StackPanel Margin="0,8,0,16">
+                                <TextBlock Margin="0,0,0,6">
+                                    <Run Text="● " Foreground="#FF06FFA5"/>
+                                    <Run Text="EMA + RSI multicapa" Foreground="#FF8B9DC3" FontSize="11" FontFamily="Consolas"/>
+                                </TextBlock>
+                                <TextBlock Margin="0,0,0,6">
+                                    <Run Text="● " Foreground="#FF06FFA5"/>
+                                    <Run Text="Futuros perpetuos BTC/ETH/Alt" Foreground="#FF8B9DC3" FontSize="11" FontFamily="Consolas"/>
+                                </TextBlock>
+                                <TextBlock Margin="0,0,0,6">
+                                    <Run Text="● " Foreground="#FF06FFA5"/>
+                                    <Run Text="Leverage y gestión de margen" Foreground="#FF8B9DC3" FontSize="11" FontFamily="Consolas"/>
+                                </TextBlock>
+                                <TextBlock>
+                                    <Run Text="● " Foreground="#FF06FFA5"/>
+                                    <Run Text="Panel de análisis IA integrado" Foreground="#FF8B9DC3" FontSize="11" FontFamily="Consolas"/>
+                                </TextBlock>
+                            </StackPanel>
+
+                            <!-- Balance area -->
+                            <Border Background="#FF0D1020" CornerRadius="6" Padding="12,8" Margin="0,0,0,14">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition/><ColumnDefinition/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <TextBlock x:Name="BingXBalance" Text="—" FontSize="16" FontWeight="Bold"
+                                                   Foreground="#FFFF9A00" FontFamily="Consolas"/>
+                                        <TextBlock Text="Balance USDT" FontSize="10"
+                                                   Foreground="#FF4A5280" FontFamily="Consolas"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" HorizontalAlignment="Right">
+                                        <StackPanel Orientation="Horizontal">
+                                            <Ellipse x:Name="BingXDot" Width="8" Height="8"
+                                                     Fill="#FF555555" VerticalAlignment="Center"
+                                                     Margin="0,0,4,0"/>
+                                            <TextBlock x:Name="BingXStatusText" Text="Desconectado"
+                                                       FontSize="10" Foreground="#FF8B9DC3"
+                                                       FontFamily="Consolas" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+
+                            <Button Content="▶  Abrir BingX Bot" Style="{StaticResource OrangeButton}"
+                                    Height="38" FontSize="12" Click="BtnBingX_Click"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+            </StackPanel>
+        </StackPanel>
+
+        <!-- ══ STATUS BAR INFERIOR ══════════════════════════════════════════ -->
+        <Border Grid.Row="1" Background="#FF080C1F" Padding="24,10" Margin="0,16,0,0">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                <StackPanel Orientation="Horizontal" Margin="0,0,32,0">
+                    <Ellipse x:Name="Mt5StatusDot2" Width="10" Height="10"
+                             Fill="#FF555555" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <TextBlock Text="MT5 Bot" Foreground="#FF8B9DC3"
+                               FontFamily="Consolas" FontSize="11" VerticalAlignment="Center"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <Ellipse x:Name="BingXStatusDot2" Width="10" Height="10"
+                             Fill="#FF555555" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <TextBlock Text="BingX Bot" Foreground="#FF8B9DC3"
+                               FontFamily="Consolas" FontSize="11" VerticalAlignment="Center"/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Page>

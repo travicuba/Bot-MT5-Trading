@@ -190,4 +190,19 @@ public class ApiService
             pips,
             timestamp,
         });
+
+    // =====================
+    // JsonElement wrappers para las nuevas vistas
+    // =====================
+    public Task<JsonElement> GetBotStatusAsync()
+        => GetJsonAsync("/api/status");
+
+    public Task<JsonElement> GetStatsJsonAsync()
+        => GetJsonAsync("/api/stats");
+
+    public Task<JsonElement> GetHistoryJsonAsync()
+        => GetJsonAsync("/api/history?limit=200");
+
+    public Task<JsonElement> GetDebugJsonAsync()
+        => GetJsonAsync("/api/debug");
 }

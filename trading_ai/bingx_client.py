@@ -368,13 +368,13 @@ def _kf(k, full, short, default=0.0):
 
 def generate_signal(klines: list) -> tuple:
     """
-    Genera señal de trading basada en EMA9/EMA21 + RSI14 + ATR14.
-    Maneja los formatos de campo de BingX v2 (o/h/l/c) y v3 (open/high/low/close).
+    Genera señal de trading con estrategia multicapa:
+      1) Cruce EMA9/EMA21 clásico  (alta prioridad)
+      2) Tendencia EMA + pullback RSI  (entrada en retroceso)
+      3) RSI extremo con confirmación de tendencia  (reversión)
 
-    Retorna (signal, rsi, atr) donde signal es:
-      'BUY'  → abrir LONG
-      'SELL' → abrir SHORT
-      None   → sin señal
+    Maneja formatos BingX v2 (o/h/l/c) y v3 (open/high/low/close).
+    Retorna (signal, rsi, atr) donde signal es 'BUY', 'SELL' o None.
     """
     if len(klines) < 30:
         return None, 50.0, 0.0
@@ -389,17 +389,33 @@ def generate_signal(klines: list) -> tuple:
     rsi   = _rsi(closes, 14)
     atr   = _atr(highs, lows, closes, 14)
 
-    # Cruce EMA: índices -1 y -2 de las series (alineadas por longitud mínima)
-    min_len = min(len(ema9), len(ema21))
-    e9_now,  e9_prev  = ema9[min_len - 1],  ema9[min_len - 2]
-    e21_now, e21_prev = ema21[min_len - 1], ema21[min_len - 2]
+    min_len  = min(len(ema9), len(ema21))
+    e9_now   = ema9[min_len - 1]
+    e9_prev  = ema9[min_len - 2]
+    e21_now  = ema21[min_len - 1]
+    e21_prev = ema21[min_len - 2]
 
-    # Señal LONG: cruce alcista + RSI entre 40-70
-    if e9_prev <= e21_prev and e9_now > e21_now and 40 < rsi < 70:
+    trend_bull = e9_now > e21_now   # EMA9 por encima de EMA21 → tendencia alcista
+    trend_bear = e9_now < e21_now   # EMA9 por debajo de EMA21 → tendencia bajista
+
+    # ── Estrategia 1: Cruce EMA (señal de máxima prioridad) ──────────────────
+    if e9_prev <= e21_prev and e9_now > e21_now and 40 < rsi < 72:
         return "BUY", rsi, atr
+    if e9_prev >= e21_prev and e9_now < e21_now and 28 < rsi < 60:
+        return "SELL", rsi, atr
 
-    # Señal SHORT: cruce bajista + RSI entre 30-60
-    if e9_prev >= e21_prev and e9_now < e21_now and 30 < rsi < 60:
+    # ── Estrategia 2: Tendencia EMA + pullback RSI ───────────────────────────
+    # En tendencia alcista, RSI baja a zona neutra-baja = oportunidad de entrada
+    if trend_bull and 33 <= rsi <= 50:
+        return "BUY", rsi, atr
+    # En tendencia bajista, RSI sube a zona neutra-alta = oportunidad de venta
+    if trend_bear and 50 <= rsi <= 67:
+        return "SELL", rsi, atr
+
+    # ── Estrategia 3: RSI extremo con confirmación de tendencia ──────────────
+    if rsi < 30 and not trend_bear:     # Sobreventa extrema sin tendencia bajista fuerte
+        return "BUY", rsi, atr
+    if rsi > 70 and not trend_bull:     # Sobrecompra extrema sin tendencia alcista fuerte
         return "SELL", rsi, atr
 
     return None, rsi, atr
