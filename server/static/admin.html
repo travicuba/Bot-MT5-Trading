@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TradingBot Admin Panel</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:#0a0e27;--panel:#151b3d;--widget:#1e2749;--entry:#252d55;
+    --blue:#4895ef;--green:#06ffa5;--red:#ff006e;--orange:#ff9a00;
+    --yellow:#ffbe0b;--text:#e0e6ff;--muted:#8b9dc3;
+    --radius:8px;--shadow:0 4px 20px rgba(0,0,0,0.4)
+  }
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',monospace,sans-serif;min-height:100vh}
+
+  /* ── LOGIN ──────────────────────────────────────────── */
+  #login-screen{display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;gap:16px}
+  #login-screen h1{font-size:28px;color:var(--blue);letter-spacing:2px}
+  #login-screen p{color:var(--muted);font-size:13px}
+  .login-card{background:var(--panel);border:1px solid var(--widget);border-radius:var(--radius);padding:36px 40px;width:360px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:14px}
+  .login-card input{background:var(--entry);border:1px solid var(--widget);border-radius:6px;color:var(--text);padding:10px 14px;font-size:14px;width:100%;outline:none}
+  .login-card input:focus{border-color:var(--blue)}
+  .login-card label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px}
+  #login-err{color:var(--red);font-size:12px;text-align:center;min-height:16px}
+
+  /* ── LAYOUT ─────────────────────────────────────────── */
+  #app{display:none;min-height:100vh;flex-direction:column}
+  header{background:var(--panel);border-bottom:2px solid var(--blue);padding:12px 24px;display:flex;align-items:center;justify-content:space-between}
+  header .brand{font-size:18px;font-weight:700;color:var(--blue);letter-spacing:1px}
+  header .user-info{display:flex;align-items:center;gap:12px;font-size:13px;color:var(--muted)}
+  header .user-info .badge{background:var(--blue);color:#fff;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700}
+  .main{display:flex;flex:1}
+
+  /* ── SIDEBAR ─────────────────────────────────────────── */
+  .sidebar{width:220px;background:var(--panel);border-right:1px solid var(--widget);padding:20px 0;flex-shrink:0}
+  .sidebar a{display:flex;align-items:center;gap:10px;padding:11px 20px;color:var(--muted);text-decoration:none;font-size:13px;cursor:pointer;transition:all .2s}
+  .sidebar a:hover,.sidebar a.active{background:var(--widget);color:var(--text);border-left:3px solid var(--blue)}
+  .sidebar a span.icon{font-size:16px;width:20px;text-align:center}
+  .sidebar .section-title{padding:18px 20px 6px;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:1.5px}
+
+  /* ── CONTENT ─────────────────────────────────────────── */
+  .content{flex:1;padding:28px;overflow-y:auto}
+  .page{display:none}
+  .page.active{display:block}
+  h2{font-size:20px;color:var(--text);margin-bottom:20px;display:flex;align-items:center;gap:10px}
+  h2 .tag{font-size:11px;background:var(--widget);color:var(--muted);padding:3px 10px;border-radius:20px;font-weight:400}
+
+  /* ── CARDS ───────────────────────────────────────────── */
+  .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;margin-bottom:24px}
+  .card{background:var(--panel);border:1px solid var(--widget);border-radius:var(--radius);padding:20px;position:relative;overflow:hidden}
+  .card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px}
+  .card.blue::before{background:var(--blue)}
+  .card.green::before{background:var(--green)}
+  .card.orange::before{background:var(--orange)}
+  .card.red::before{background:var(--red)}
+  .card .label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px}
+  .card .value{font-size:28px;font-weight:700;color:var(--text)}
+  .card .sub{font-size:11px;color:var(--muted);margin-top:4px}
+
+  /* ── TABLES ──────────────────────────────────────────── */
+  .table-wrap{background:var(--panel);border:1px solid var(--widget);border-radius:var(--radius);overflow:hidden}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{background:var(--widget);color:var(--muted);text-transform:uppercase;font-size:10px;letter-spacing:1px;padding:10px 16px;text-align:left}
+  td{padding:10px 16px;border-bottom:1px solid var(--widget);color:var(--text)}
+  tr:last-child td{border:none}
+  tr:hover td{background:rgba(72,149,239,0.04)}
+  .badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:600}
+  .badge.active{background:rgba(6,255,165,0.15);color:var(--green)}
+  .badge.inactive{background:rgba(255,0,110,0.15);color:var(--red)}
+  .badge.admin{background:rgba(72,149,239,0.2);color:var(--blue)}
+  .badge.free{background:rgba(139,157,195,0.2);color:var(--muted)}
+  .badge.monthly{background:rgba(255,154,0,0.2);color:var(--orange)}
+  .badge.annual{background:rgba(72,149,239,0.2);color:var(--blue)}
+  .badge.lifetime{background:rgba(6,255,165,0.2);color:var(--green)}
+
+  /* ── BUTTONS ──────────────────────────────────────────── */
+  .btn{border:none;border-radius:6px;padding:8px 16px;font-size:13px;cursor:pointer;font-weight:600;transition:opacity .2s}
+  .btn:hover{opacity:.85}
+  .btn-blue{background:var(--blue);color:#fff}
+  .btn-green{background:var(--green);color:#0a0e27}
+  .btn-red{background:var(--red);color:#fff}
+  .btn-orange{background:var(--orange);color:#0a0e27}
+  .btn-ghost{background:var(--widget);color:var(--muted)}
+  .btn-sm{padding:5px 11px;font-size:12px}
+
+  /* ── FORMS ───────────────────────────────────────────── */
+  .form-card{background:var(--panel);border:1px solid var(--widget);border-radius:var(--radius);padding:24px;margin-bottom:20px}
+  .form-row{display:flex;gap:16px;margin-bottom:14px;flex-wrap:wrap}
+  .form-group{display:flex;flex-direction:column;gap:6px;flex:1;min-width:180px}
+  .form-group label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px}
+  .form-group input,.form-group select,.form-group textarea{
+    background:var(--entry);border:1px solid var(--widget);border-radius:6px;
+    color:var(--text);padding:9px 12px;font-size:13px;outline:none;width:100%}
+  .form-group input:focus,.form-group select:focus{border-color:var(--blue)}
+  .form-group select option{background:var(--panel)}
+  .form-actions{display:flex;gap:10px;margin-top:6px}
+  .status-msg{font-size:12px;padding:6px 12px;border-radius:6px;margin-top:8px;display:none}
+  .status-msg.ok{background:rgba(6,255,165,0.12);color:var(--green)}
+  .status-msg.err{background:rgba(255,0,110,0.12);color:var(--red)}
+
+  /* ── TOGGLE ──────────────────────────────────────────── */
+  .toggle-row{display:flex;align-items:center;gap:16px;background:var(--panel);border:1px solid var(--widget);border-radius:var(--radius);padding:20px 24px;margin-bottom:16px}
+  .toggle-info{flex:1}
+  .toggle-info .t-title{font-size:15px;font-weight:600;margin-bottom:4px}
+  .toggle-info .t-desc{font-size:12px;color:var(--muted)}
+  .switch{position:relative;width:50px;height:26px;flex-shrink:0}
+  .switch input{opacity:0;width:0;height:0}
+  .slider{position:absolute;inset:0;background:var(--widget);border-radius:34px;cursor:pointer;transition:.3s}
+  .slider:before{content:'';position:absolute;height:20px;width:20px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.3s}
+  input:checked + .slider{background:var(--green)}
+  input:checked + .slider:before{transform:translateX(24px)}
+
+  /* ── MODAL ───────────────────────────────────────────── */
+  .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:999;align-items:center;justify-content:center}
+  .modal-overlay.open{display:flex}
+  .modal{background:var(--panel);border:1px solid var(--widget);border-radius:12px;padding:30px;min-width:400px;max-width:520px;width:90%;box-shadow:var(--shadow)}
+  .modal h3{font-size:16px;margin-bottom:20px;color:var(--text)}
+  .modal-footer{display:flex;gap:10px;justify-content:flex-end;margin-top:20px}
+
+  /* ── MISC ─────────────────────────────────────────────── */
+  .toolbar{display:flex;gap:10px;margin-bottom:16px;align-items:center;flex-wrap:wrap}
+  .toolbar input[type=search]{background:var(--entry);border:1px solid var(--widget);border-radius:6px;color:var(--text);padding:8px 14px;font-size:13px;outline:none;width:220px}
+  .toolbar input:focus{border-color:var(--blue)}
+  .empty-state{text-align:center;padding:48px;color:var(--muted);font-size:14px}
+  .spinner{display:inline-block;width:16px;height:16px;border:2px solid var(--widget);border-top-color:var(--blue);border-radius:50%;animation:spin .7s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .maintenance-banner{background:rgba(255,154,0,0.12);border:1px solid var(--orange);border-radius:8px;padding:14px 20px;margin-bottom:20px;color:var(--orange);font-size:13px;display:none}
+  .maintenance-banner.show{display:block}
+  .log-box{background:var(--bg);border:1px solid var(--widget);border-radius:8px;padding:16px;font-family:monospace;font-size:12px;color:var(--muted);height:240px;overflow-y:auto;white-space:pre-wrap}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════ LOGIN ══ -->
+<div id="login-screen">
+  <h1>⚡ TradingBot</h1>
+  <p>Panel de Administración del Servidor</p>
+  <div class="login-card">
+    <div>
+      <label>Email</label>
+      <input id="l-email" type="email" placeholder="admin@ejemplo.com" autocomplete="username">
+    </div>
+    <div>
+      <label>Contraseña</label>
+      <input id="l-pass" type="password" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <div id="login-err"></div>
+    <button class="btn btn-blue" id="l-btn" onclick="doLogin()">Iniciar sesión</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════ APP ═══ -->
+<div id="app">
+
+  <!-- HEADER -->
+  <header>
+    <div class="brand">⚡ TradingBot Admin</div>
+    <div class="user-info">
+      <span id="h-name">Admin</span>
+      <span class="badge">ADMIN</span>
+      <button class="btn btn-ghost btn-sm" onclick="doLogout()">Salir</button>
+    </div>
+  </header>
+
+  <div class="main">
+    <!-- SIDEBAR -->
+    <nav class="sidebar">
+      <div class="section-title">General</div>
+      <a onclick="nav('dashboard')" class="active" id="nav-dashboard"><span class="icon">📊</span> Dashboard</a>
+      <a onclick="nav('maintenance')" id="nav-maintenance"><span class="icon">🔧</span> Mantenimiento</a>
+      <div class="section-title">Usuarios</div>
+      <a onclick="nav('users')" id="nav-users"><span class="icon">👥</span> Usuarios</a>
+      <a onclick="nav('licenses')" id="nav-licenses"><span class="icon">🔑</span> Licencias</a>
+      <div class="section-title">Sistema</div>
+      <a onclick="nav('settings')" id="nav-settings"><span class="icon">⚙️</span> Configuración</a>
+    </nav>
+
+    <!-- CONTENT -->
+    <div class="content">
+
+      <!-- MAINTENANCE BANNER -->
+      <div class="maintenance-banner" id="maint-banner">
+        ⚠️ El servidor está actualmente en <strong>modo mantenimiento</strong>. Los clientes ven una pantalla de mantenimiento.
+      </div>
+
+      <!-- ── DASHBOARD ── -->
+      <div class="page active" id="page-dashboard">
+        <h2>Dashboard <span class="tag" id="dash-updated">—</span></h2>
+        <div class="cards">
+          <div class="card blue"><div class="label">Usuarios totales</div><div class="value" id="st-users">—</div></div>
+          <div class="card green"><div class="label">Licencias activas</div><div class="value" id="st-lic">—</div></div>
+          <div class="card orange"><div class="label">Registros hoy</div><div class="value" id="st-today">—</div></div>
+          <div class="card red"><div class="label">Mantenimiento</div><div class="value" id="st-maint">—</div></div>
+        </div>
+        <h2 style="font-size:15px;margin-bottom:12px">Últimos usuarios registrados</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Nombre</th><th>Email</th><th>Licencia</th><th>Registrado</th><th>Estado</th></tr></thead>
+            <tbody id="dash-users-tbody"><tr><td colspan="5" class="empty-state">Cargando…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ── MANTENIMIENTO ── -->
+      <div class="page" id="page-maintenance">
+        <h2>Modo Mantenimiento</h2>
+        <div class="toggle-row">
+          <div class="toggle-info">
+            <div class="t-title">Activar modo mantenimiento</div>
+            <div class="t-desc">Cuando está activo, todos los clientes ven una pantalla de mantenimiento y no pueden operar.</div>
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="maint-toggle" onchange="setMaintenance()">
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="form-card">
+          <div class="form-group">
+            <label>Mensaje de mantenimiento</label>
+            <textarea id="maint-msg" rows="3" style="resize:vertical;background:var(--entry);border:1px solid var(--widget);border-radius:6px;color:var(--text);padding:9px 12px;font-size:13px;outline:none;width:100%" placeholder="Servidor en mantenimiento. Volveremos pronto."></textarea>
+          </div>
+          <div class="form-actions" style="margin-top:14px">
+            <button class="btn btn-blue" onclick="saveMaintMsg()">Guardar mensaje</button>
+          </div>
+          <div class="status-msg" id="maint-msg-status"></div>
+        </div>
+        <div class="form-card">
+          <div class="t-title" style="font-size:14px;margin-bottom:12px">Registro de nuevos usuarios</div>
+          <div class="toggle-row" style="margin:0;border:none;padding:0;background:transparent">
+            <div class="toggle-info">
+              <div class="t-desc">Permitir que nuevos usuarios se registren en el sistema</div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="reg-toggle" onchange="setRegistration()">
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── USUARIOS ── -->
+      <div class="page" id="page-users">
+        <h2>Usuarios <span class="tag" id="users-count">0</span></h2>
+        <div class="toolbar">
+          <input type="search" id="user-search" placeholder="Buscar por nombre o email…" oninput="filterUsers()">
+          <button class="btn btn-blue" onclick="showNewUserModal()">+ Nuevo usuario</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Nombre</th><th>Email</th><th>Rol</th><th>Estado</th><th>Registrado</th><th>Acciones</th></tr></thead>
+            <tbody id="users-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ── LICENCIAS ── -->
+      <div class="page" id="page-licenses">
+        <h2>Licencias</h2>
+        <div class="toolbar">
+          <input type="search" id="lic-search" placeholder="Buscar por usuario o tipo…" oninput="filterLicenses()">
+          <button class="btn btn-green" onclick="showNewLicModal()">+ Asignar licencia</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Usuario</th><th>Tipo</th><th>Inicio</th><th>Vence</th><th>Estado</th><th>Precio pagado</th><th>Notas</th><th>Acciones</th></tr></thead>
+            <tbody id="lic-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ── CONFIGURACIÓN ── -->
+      <div class="page" id="page-settings">
+        <h2>Configuración del servidor</h2>
+        <div class="form-card" id="settings-form">
+          <div class="empty-state">Cargando configuración…</div>
+        </div>
+        <div class="form-card">
+          <div class="t-title" style="font-size:14px;margin-bottom:12px">Logs del servidor</div>
+          <div class="log-box" id="server-log">Cargando…</div>
+          <div class="form-actions" style="margin-top:10px">
+            <button class="btn btn-ghost btn-sm" onclick="loadSettings()">↻ Actualizar</button>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /content -->
+  </div><!-- /main -->
+</div><!-- /app -->
+
+<!-- ═══════════════════════ MODALES ════════════════ -->
+
+<!-- New/Edit User Modal -->
+<div class="modal-overlay" id="modal-user">
+  <div class="modal">
+    <h3 id="modal-user-title">Nuevo usuario</h3>
+    <input type="hidden" id="mu-id">
+    <div class="form-row">
+      <div class="form-group"><label>Nombre</label><input id="mu-first" placeholder="Juan"></div>
+      <div class="form-group"><label>Apellido</label><input id="mu-last" placeholder="García"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Email</label><input id="mu-email" type="email" placeholder="juan@email.com"></div>
+      <div class="form-group"><label>Contraseña <span style="color:var(--muted)">(vacío = sin cambio)</span></label><input id="mu-pass" type="password" placeholder="••••••••"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Rol</label>
+        <select id="mu-admin">
+          <option value="false">Usuario normal</option>
+          <option value="true">Administrador</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Estado</label>
+        <select id="mu-active">
+          <option value="true">Activo</option>
+          <option value="false">Inactivo</option>
+        </select>
+      </div>
+    </div>
+    <div class="status-msg" id="mu-status"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-user')">Cancelar</button>
+      <button class="btn btn-blue" onclick="saveUser()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- New License Modal -->
+<div class="modal-overlay" id="modal-lic">
+  <div class="modal">
+    <h3>Asignar licencia</h3>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Usuario</label>
+        <select id="ml-user"></select>
+      </div>
+      <div class="form-group">
+        <label>Tipo de licencia</label>
+        <select id="ml-type">
+          <option value="free">Gratis</option>
+          <option value="monthly">Mensual (30 días)</option>
+          <option value="annual">Anual (365 días)</option>
+          <option value="lifetime">De por vida</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Precio pagado (USD)</label><input id="ml-price" type="number" step="0.01" placeholder="0.00"></div>
+      <div class="form-group"><label>Notas</label><input id="ml-notes" placeholder="Pago via PayPal…"></div>
+    </div>
+    <div class="status-msg" id="ml-status"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-lic')">Cancelar</button>
+      <button class="btn btn-green" onclick="saveLicense()">Asignar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Confirm Delete Modal -->
+<div class="modal-overlay" id="modal-confirm">
+  <div class="modal">
+    <h3 id="confirm-title">¿Confirmar acción?</h3>
+    <p id="confirm-msg" style="color:var(--muted);font-size:13px;margin-bottom:8px"></p>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('modal-confirm')">Cancelar</button>
+      <button class="btn btn-red" id="confirm-ok">Confirmar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════
+// CONFIG
+// ══════════════════════════════════════════════════════
+// The admin panel is served by the same FastAPI server.
+// API base URL = same origin (empty string = relative paths).
+const API = '';
+let TOKEN = '';
+let ALL_USERS = [];
+let ALL_LICS  = [];
+
+// ══════════════════════════════════════════════════════
+// HTTP HELPERS
+// ══════════════════════════════════════════════════════
+async function api(method, path, body) {
+  const opts = {
+    method,
+    headers: { 'Content-Type': 'application/json', ...(TOKEN ? { 'Authorization': 'Bearer ' + TOKEN } : {}) }
+  };
+  if (body !== undefined) opts.body = JSON.stringify(body);
+  const r = await fetch(API + path, opts);
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.detail || data.message || r.statusText);
+  return data;
+}
+const GET  = p      => api('GET',    p);
+const POST = (p, b) => api('POST',   p, b);
+const PUT  = (p, b) => api('PUT',    p, b);
+const DEL  = p      => api('DELETE', p);
+
+// ══════════════════════════════════════════════════════
+// AUTH
+// ══════════════════════════════════════════════════════
+async function doLogin() {
+  const email = document.getElementById('l-email').value.trim();
+  const pass  = document.getElementById('l-pass').value;
+  const err   = document.getElementById('login-err');
+  const btn   = document.getElementById('l-btn');
+  err.textContent = '';
+  btn.disabled = true; btn.textContent = 'Entrando…';
+  try {
+    const data = await POST('/auth/login', { email, password: pass });
+    if (!data.is_admin) { err.textContent = 'Solo administradores pueden acceder.'; return; }
+    TOKEN = data.access_token;
+    localStorage.setItem('admin_token', TOKEN);
+    document.getElementById('h-name').textContent = `${data.first_name} ${data.last_name}`;
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('app').style.display = 'flex';
+    document.getElementById('app').style.flexDirection = 'column';
+    initApp();
+  } catch(e) {
+    err.textContent = e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Iniciar sesión';
+  }
+}
+
+function doLogout() {
+  TOKEN = '';
+  localStorage.removeItem('admin_token');
+  location.reload();
+}
+
+// Auto-login if token saved
+window.addEventListener('DOMContentLoaded', async () => {
+  const saved = localStorage.getItem('admin_token');
+  if (saved) {
+    TOKEN = saved;
+    try {
+      const me = await GET('/auth/me');
+      if (!me.is_admin) throw new Error();
+      document.getElementById('h-name').textContent = `${me.first_name} ${me.last_name}`;
+      document.getElementById('login-screen').style.display = 'none';
+      document.getElementById('app').style.display = 'flex';
+      document.getElementById('app').style.flexDirection = 'column';
+      initApp();
+    } catch { TOKEN = ''; localStorage.removeItem('admin_token'); }
+  }
+  document.getElementById('l-pass').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+});
+
+// ══════════════════════════════════════════════════════
+// NAVIGATION
+// ══════════════════════════════════════════════════════
+function nav(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.sidebar a').forEach(a => a.classList.remove('active'));
+  document.getElementById('page-' + page).classList.add('active');
+  document.getElementById('nav-' + page).classList.add('active');
+  if (page === 'dashboard')   loadDashboard();
+  if (page === 'users')       loadUsers();
+  if (page === 'licenses')    loadLicenses();
+  if (page === 'maintenance') loadMaintenance();
+  if (page === 'settings')    loadSettings();
+}
+
+// ══════════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════════
+function initApp() {
+  loadDashboard();
+  checkMaintBanner();
+}
+
+async function checkMaintBanner() {
+  try {
+    const m = await GET('/system/maintenance');
+    const b = document.getElementById('maint-banner');
+    if (m.enabled) b.classList.add('show'); else b.classList.remove('show');
+  } catch {}
+}
+
+// ══════════════════════════════════════════════════════
+// DASHBOARD
+// ══════════════════════════════════════════════════════
+async function loadDashboard() {
+  try {
+    const [stats, users, maint] = await Promise.all([
+      GET('/system/stats'),
+      GET('/users/'),
+      GET('/system/maintenance'),
+    ]);
+    document.getElementById('st-users').textContent  = stats.total_users ?? '—';
+    document.getElementById('st-lic').textContent    = stats.active_licenses ?? '—';
+    document.getElementById('st-today').textContent  = stats.registrations_today ?? '—';
+    document.getElementById('st-maint').textContent  = maint.enabled ? 'ACTIVO' : 'INACTIVO';
+    document.getElementById('st-maint').style.color  = maint.enabled ? 'var(--orange)' : 'var(--green)';
+    document.getElementById('dash-updated').textContent = new Date().toLocaleTimeString();
+
+    const sorted = [...users].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 8);
+    document.getElementById('dash-users-tbody').innerHTML = sorted.length ? sorted.map(u => `
+      <tr>
+        <td>${u.first_name} ${u.last_name}</td>
+        <td style="color:var(--muted)">${u.email}</td>
+        <td><span class="badge ${u.license_type || 'free'}">${licLabel(u.license_type)}</span></td>
+        <td style="color:var(--muted)">${fmtDate(u.created_at)}</td>
+        <td><span class="badge ${u.is_active ? 'active' : 'inactive'}">${u.is_active ? 'Activo' : 'Inactivo'}</span></td>
+      </tr>`).join('') : '<tr><td colspan="5" class="empty-state">Sin usuarios</td></tr>';
+  } catch(e) { console.error(e); }
+}
+
+// ══════════════════════════════════════════════════════
+// MANTENIMIENTO
+// ══════════════════════════════════════════════════════
+async function loadMaintenance() {
+  try {
+    const [m, s] = await Promise.all([GET('/system/maintenance'), GET('/system/settings')]);
+    document.getElementById('maint-toggle').checked = m.enabled;
+    document.getElementById('maint-msg').value = m.message || '';
+    const regSetting = s.find ? s.find(x => x.key === 'registration_enabled') : null;
+    document.getElementById('reg-toggle').checked = regSetting ? regSetting.value === 'true' : true;
+  } catch {}
+}
+
+async function setMaintenance() {
+  const enabled = document.getElementById('maint-toggle').checked;
+  const message = document.getElementById('maint-msg').value;
+  try {
+    await PUT('/system/maintenance', { enabled, message });
+    checkMaintBanner();
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+async function saveMaintMsg() {
+  const enabled = document.getElementById('maint-toggle').checked;
+  const message = document.getElementById('maint-msg').value;
+  const s = document.getElementById('maint-msg-status');
+  try {
+    await PUT('/system/maintenance', { enabled, message });
+    showStatus(s, 'Mensaje guardado', true);
+  } catch(e) { showStatus(s, e.message, false); }
+}
+
+async function setRegistration() {
+  const enabled = document.getElementById('reg-toggle').checked;
+  try { await PUT('/system/registration/' + enabled); }
+  catch(e) { alert('Error: ' + e.message); }
+}
+
+// ══════════════════════════════════════════════════════
+// USUARIOS
+// ══════════════════════════════════════════════════════
+async function loadUsers() {
+  const tbody = document.getElementById('users-tbody');
+  tbody.innerHTML = '<tr><td colspan="6" class="empty-state"><span class="spinner"></span></td></tr>';
+  try {
+    ALL_USERS = await GET('/users/');
+    renderUsers(ALL_USERS);
+  } catch(e) { tbody.innerHTML = `<tr><td colspan="6" class="empty-state">Error: ${e.message}</td></tr>`; }
+}
+
+function renderUsers(users) {
+  document.getElementById('users-count').textContent = users.length;
+  const tbody = document.getElementById('users-tbody');
+  tbody.innerHTML = users.length ? users.map(u => `
+    <tr>
+      <td>${u.first_name} ${u.last_name} ${u.is_admin ? '<span class="badge admin">Admin</span>' : ''}</td>
+      <td style="color:var(--muted)">${u.email}</td>
+      <td><span class="badge ${u.is_admin ? 'admin' : 'free'}">${u.is_admin ? 'Admin' : 'Usuario'}</span></td>
+      <td><span class="badge ${u.is_active ? 'active' : 'inactive'}">${u.is_active ? 'Activo' : 'Inactivo'}</span></td>
+      <td style="color:var(--muted)">${fmtDate(u.created_at)}</td>
+      <td>
+        <button class="btn btn-ghost btn-sm" onclick='editUser(${JSON.stringify(u)})'>Editar</button>
+        <button class="btn btn-red btn-sm" onclick="confirmDelete('usuario', ${u.id}, deleteUser)">Eliminar</button>
+      </td>
+    </tr>`).join('') : '<tr><td colspan="6" class="empty-state">Sin usuarios</td></tr>';
+}
+
+function filterUsers() {
+  const q = document.getElementById('user-search').value.toLowerCase();
+  renderUsers(ALL_USERS.filter(u =>
+    `${u.first_name} ${u.last_name} ${u.email}`.toLowerCase().includes(q)));
+}
+
+function showNewUserModal() {
+  document.getElementById('modal-user-title').textContent = 'Nuevo usuario';
+  document.getElementById('mu-id').value = '';
+  ['mu-first','mu-last','mu-email','mu-pass'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('mu-admin').value = 'false';
+  document.getElementById('mu-active').value = 'true';
+  hideStatus(document.getElementById('mu-status'));
+  openModal('modal-user');
+}
+
+function editUser(u) {
+  document.getElementById('modal-user-title').textContent = 'Editar usuario';
+  document.getElementById('mu-id').value    = u.id;
+  document.getElementById('mu-first').value = u.first_name;
+  document.getElementById('mu-last').value  = u.last_name;
+  document.getElementById('mu-email').value = u.email;
+  document.getElementById('mu-pass').value  = '';
+  document.getElementById('mu-admin').value  = u.is_admin ? 'true' : 'false';
+  document.getElementById('mu-active').value = u.is_active ? 'true' : 'false';
+  hideStatus(document.getElementById('mu-status'));
+  openModal('modal-user');
+}
+
+async function saveUser() {
+  const id    = document.getElementById('mu-id').value;
+  const s     = document.getElementById('mu-status');
+  const body  = {
+    first_name: document.getElementById('mu-first').value.trim(),
+    last_name:  document.getElementById('mu-last').value.trim(),
+    email:      document.getElementById('mu-email').value.trim(),
+    is_admin:   document.getElementById('mu-admin').value === 'true',
+    is_active:  document.getElementById('mu-active').value === 'true',
+  };
+  const pass = document.getElementById('mu-pass').value;
+  if (pass) body.password = pass;
+  try {
+    if (id) {
+      await PUT('/users/' + id, body);
+      showStatus(s, 'Usuario actualizado', true);
+    } else {
+      if (!pass) { showStatus(s, 'La contraseña es obligatoria', false); return; }
+      await POST('/auth/register', { ...body, password: pass });
+      showStatus(s, 'Usuario creado', true);
+    }
+    setTimeout(() => { closeModal('modal-user'); loadUsers(); loadDashboard(); }, 900);
+  } catch(e) { showStatus(s, e.message, false); }
+}
+
+async function deleteUser(id) {
+  try { await DEL('/users/' + id); loadUsers(); loadDashboard(); }
+  catch(e) { alert('Error: ' + e.message); }
+}
+
+// ══════════════════════════════════════════════════════
+// LICENCIAS
+// ══════════════════════════════════════════════════════
+async function loadLicenses() {
+  const tbody = document.getElementById('lic-tbody');
+  tbody.innerHTML = '<tr><td colspan="8" class="empty-state"><span class="spinner"></span></td></tr>';
+  try {
+    if (!ALL_USERS.length) ALL_USERS = await GET('/users/');
+    // Load licenses for all users
+    const licsArr = await Promise.all(ALL_USERS.map(u =>
+      GET('/licenses/user/' + u.id).then(l => l.map(x => ({ ...x, _user: u }))).catch(() => [])
+    ));
+    ALL_LICS = licsArr.flat();
+    renderLicenses(ALL_LICS);
+  } catch(e) { tbody.innerHTML = `<tr><td colspan="8" class="empty-state">Error: ${e.message}</td></tr>`; }
+}
+
+function renderLicenses(lics) {
+  const tbody = document.getElementById('lic-tbody');
+  tbody.innerHTML = lics.length ? lics.map(l => `
+    <tr>
+      <td>${l._user ? l._user.first_name + ' ' + l._user.last_name : '—'}<br><span style="color:var(--muted);font-size:11px">${l._user?.email || ''}</span></td>
+      <td><span class="badge ${l.license_type}">${licLabel(l.license_type)}</span></td>
+      <td style="color:var(--muted)">${fmtDate(l.start_date)}</td>
+      <td style="color:var(--muted)">${l.end_date ? fmtDate(l.end_date) : '<span style="color:var(--green)">∞ Siempre</span>'}</td>
+      <td><span class="badge ${l.is_active ? 'active' : 'inactive'}">${l.is_active ? 'Activa' : 'Inactiva'}</span></td>
+      <td>${l.price_paid ? '$' + parseFloat(l.price_paid).toFixed(2) : '—'}</td>
+      <td style="color:var(--muted);font-size:12px">${l.notes || '—'}</td>
+      <td>
+        <button class="btn btn-red btn-sm" onclick="confirmDelete('licencia #${l.id}', ${l.id}, deleteLicense)">Revocar</button>
+      </td>
+    </tr>`).join('') : '<tr><td colspan="8" class="empty-state">Sin licencias</td></tr>';
+}
+
+function filterLicenses() {
+  const q = document.getElementById('lic-search').value.toLowerCase();
+  renderLicenses(ALL_LICS.filter(l =>
+    `${l._user?.first_name} ${l._user?.last_name} ${l._user?.email} ${l.license_type}`.toLowerCase().includes(q)));
+}
+
+async function showNewLicModal() {
+  if (!ALL_USERS.length) ALL_USERS = await GET('/users/');
+  const sel = document.getElementById('ml-user');
+  sel.innerHTML = ALL_USERS.map(u => `<option value="${u.id}">${u.first_name} ${u.last_name} (${u.email})</option>`).join('');
+  document.getElementById('ml-price').value = '';
+  document.getElementById('ml-notes').value = '';
+  document.getElementById('ml-type').value  = 'monthly';
+  hideStatus(document.getElementById('ml-status'));
+  openModal('modal-lic');
+}
+
+async function saveLicense() {
+  const s = document.getElementById('ml-status');
+  const body = {
+    user_id:      parseInt(document.getElementById('ml-user').value),
+    license_type: document.getElementById('ml-type').value,
+    price_paid:   parseFloat(document.getElementById('ml-price').value) || 0,
+    notes:        document.getElementById('ml-notes').value,
+  };
+  try {
+    await POST('/licenses/', body);
+    showStatus(s, 'Licencia asignada', true);
+    setTimeout(() => { closeModal('modal-lic'); loadLicenses(); loadDashboard(); }, 900);
+  } catch(e) { showStatus(s, e.message, false); }
+}
+
+async function deleteLicense(id) {
+  try { await DEL('/licenses/' + id); loadLicenses(); }
+  catch(e) { alert('Error: ' + e.message); }
+}
+
+// ══════════════════════════════════════════════════════
+// SETTINGS
+// ══════════════════════════════════════════════════════
+async function loadSettings() {
+  try {
+    const settings = await GET('/system/settings');
+    const form = document.getElementById('settings-form');
+    if (!settings || !settings.length) {
+      form.innerHTML = '<div class="empty-state">Sin configuración disponible</div>';
+      return;
+    }
+    form.innerHTML = settings.map(s => `
+      <div class="form-row" style="align-items:center;margin-bottom:10px">
+        <div class="form-group" style="max-width:220px">
+          <label>${s.key}</label>
+          <input id="cfg-${s.key}" value="${s.value}" placeholder="${s.value}">
+        </div>
+        <div style="padding-top:22px">
+          <button class="btn btn-blue btn-sm" onclick="saveSetting('${s.key}')">Guardar</button>
+        </div>
+      </div>`).join('') +
+      '<div class="status-msg" id="cfg-status"></div>';
+
+    document.getElementById('server-log').textContent = JSON.stringify(settings, null, 2);
+  } catch(e) {
+    document.getElementById('settings-form').innerHTML = `<div class="empty-state">Error: ${e.message}</div>`;
+  }
+}
+
+async function saveSetting(key) {
+  const val = document.getElementById('cfg-' + key)?.value;
+  const s = document.getElementById('cfg-status');
+  try {
+    await PUT('/system/settings/' + key, { value: val });
+    showStatus(s, `"${key}" guardado`, true);
+  } catch(e) { showStatus(s, e.message, false); }
+}
+
+// ══════════════════════════════════════════════════════
+// MODALES / UI HELPERS
+// ══════════════════════════════════════════════════════
+function openModal(id)  { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+let _confirmCallback = null, _confirmId = null;
+function confirmDelete(label, id, cb) {
+  document.getElementById('confirm-title').textContent = '¿Eliminar ' + label + '?';
+  document.getElementById('confirm-msg').textContent   = 'Esta acción no se puede deshacer.';
+  _confirmCallback = cb; _confirmId = id;
+  document.getElementById('confirm-ok').onclick = () => { closeModal('modal-confirm'); cb(id); };
+  openModal('modal-confirm');
+}
+
+function showStatus(el, msg, ok) {
+  el.textContent  = msg;
+  el.className    = 'status-msg ' + (ok ? 'ok' : 'err');
+  el.style.display = 'block';
+  if (ok) setTimeout(() => el.style.display = 'none', 3000);
+}
+function hideStatus(el) { el.style.display = 'none'; }
+
+// ══════════════════════════════════════════════════════
+// FORMATTERS
+// ══════════════════════════════════════════════════════
+function fmtDate(d) {
+  if (!d) return '—';
+  try { return new Date(d).toLocaleDateString('es', { day:'2-digit', month:'short', year:'numeric' }); }
+  catch { return d; }
+}
+function licLabel(t) {
+  return { free:'Gratis', monthly:'Mensual', annual:'Anual', lifetime:'De por vida' }[t] || t || '—';
+}
+
+// Close modals on overlay click
+document.querySelectorAll('.modal-overlay').forEach(o => {
+  o.addEventListener('click', e => { if (e.target === o) o.classList.remove('open'); });
+});
+</script>
+</body>
+</html>

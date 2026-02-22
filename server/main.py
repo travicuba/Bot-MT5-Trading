@@ -13,8 +13,11 @@ Variables de entorno:
 """
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from database import engine, SessionLocal
@@ -99,13 +102,26 @@ app.include_router(configs_router.router,  prefix="/config",   tags=["⚙️ Con
 app.include_router(system_router.router,   prefix="/system",   tags=["🖥️ Sistema"])
 
 
+# ── Admin panel (static HTML) ─────────────────────────────────────────────────
+_STATIC_DIR = Path(__file__).parent / "static"
+if _STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
+
+
+@app.get("/admin", tags=["🏠 Info"], include_in_schema=False)
+def admin_panel():
+    """Panel de administración web."""
+    return FileResponse(str(_STATIC_DIR / "admin.html"))
+
+
 @app.get("/", tags=["🏠 Info"])
 def root():
     return {
-        "service":  "TradingBot Pro Server",
-        "version":  "1.0.0",
-        "status":   "running",
-        "docs":     "/docs",
+        "service":     "TradingBot Pro Server",
+        "version":     "1.0.0",
+        "status":      "running",
+        "docs":        "/docs",
+        "admin_panel": "/admin",
     }
 
 
